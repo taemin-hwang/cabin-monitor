@@ -11,6 +11,7 @@ from service.status import Status
 
 class CabinMonitor:
     def __init__(self):
+        self.__current_status = 1
         self.skeleton = Skeleton()
         self.control = Control()
         self.status = Status()
@@ -25,6 +26,9 @@ class CabinMonitor:
                 print("Ignoring empty camera frame.")
                 continue
 
+            # resize image to 640 x 480
+            image = cv2.resize(image, (640, 480))
+
             annotations = self.skeleton.get_annotations(image)
             if annotations is None or annotations.pose_landmarks is None:
                 continue
@@ -35,6 +39,8 @@ class CabinMonitor:
             control = self.control.get_control(skeleton)
             status = self.status.get_status(skeleton)
 
+            self.print_control(control)
+            self.print_status(status)
 
             if cv2.waitKey(1) == ord('q'):
                 break
@@ -50,3 +56,24 @@ class CabinMonitor:
             landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style())
         # Flip the image horizontally for a selfie-view display.
         cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
+
+    def print_control(self, control):
+        if control == 1:
+            print("Control : UP")
+        elif control == 2:
+            print("Control : DOWN")
+        elif control == 3:
+            print("Control : LEFT")
+        elif control == 4:
+            print("Control : RIGHT")
+        else:
+            pass
+
+    def print_status(self, status):
+        if status is not self.__current_status:
+            if status == 2:
+                print("Status : GAZE LEFT")
+            elif status == 3:
+                print("Status : GAZE RIGHT")
+
+        self.__current_status = status

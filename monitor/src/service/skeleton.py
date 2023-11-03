@@ -31,7 +31,10 @@ class Skeleton:
         pass
 
     def get_annotations(self, image):
-        pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        pose = mp_pose.Pose(
+            model_complexity=1,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5)
         # To improve performance, optionally mark the image as not writeable to
         # pass by reference.
         image.flags.writeable = False

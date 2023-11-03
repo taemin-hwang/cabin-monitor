@@ -16,11 +16,9 @@ class Status:
 
         status = 1
 
-        if (d2 / d1 > 1.2) :
-            print("Gaze Left")
+        if (d2 / d1 > 1.4) :
             status = 2
-        elif (d1 / d2 > 1.2) :
-            print("Gaze Right")
+        elif (d1 / d2 > 1.4) :
             status = 3
         else:
             status = 1
