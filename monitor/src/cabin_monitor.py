@@ -6,10 +6,14 @@ mp_drawing_styles = mp.solutions.drawing_styles
 mp_pose = mp.solutions.pose
 
 from service.skeleton import Skeleton
+from service.control import Control
+from service.status import Status
 
 class CabinMonitor:
     def __init__(self):
         self.skeleton = Skeleton()
+        self.control = Control()
+        self.status = Status()
 
     def run(self):
         # For webcam input:
@@ -21,20 +25,28 @@ class CabinMonitor:
                 print("Ignoring empty camera frame.")
                 continue
 
-            results = self.skeleton.get_skeleton(image)
+            annotations = self.skeleton.get_annotations(image)
+            if annotations is None or annotations.pose_landmarks is None:
+                continue
 
-            # Make white background
-            black = np.zeros(image.shape, dtype=np.uint8)
+            self.draw_pose_annotation(np.ones(image.shape, dtype=np.uint8)*50, annotations)
 
-            # Draw the pose annotation on the image.
-            mp_drawing.draw_landmarks(
-                black,
-                results.pose_landmarks,
-                mp_pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style())
-            # Flip the image horizontally for a selfie-view display.
-            cv2.imshow('MediaPipe Pose', cv2.flip(black, 1))
+            skeleton = self.skeleton.get_skeleton(annotations)
+            control = self.control.get_control(skeleton)
+            status = self.status.get_status(skeleton)
+
 
             if cv2.waitKey(1) == ord('q'):
                 break
+
         cap.release()
+
+    def draw_pose_annotation(self, image, results):
+        # Draw the pose annotation on the image.
+        mp_drawing.draw_landmarks(
+            image,
+            results.pose_landmarks,
+            mp_pose.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style())
+        # Flip the image horizontally for a selfie-view display.
+        cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
