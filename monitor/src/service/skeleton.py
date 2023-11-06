@@ -27,18 +27,17 @@ mp_pose = mp.solutions.pose
 
 class Skeleton:
     def __init__(self):
-        pass
-
-    def get_annotations(self, image):
-        pose = mp_pose.Pose(
+        self.pose = mp_pose.Pose(
             model_complexity=1,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5)
+
+    def get_annotations(self, image):
         # To improve performance, optionally mark the image as not writeable to
         # pass by reference.
         image.flags.writeable = False
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = pose.process(image)
+        results = self.pose.process(image)
         return results
 
     def get_skeleton(self, annotations):

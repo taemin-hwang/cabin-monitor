@@ -89,12 +89,21 @@ class ServiceManager:
         cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
 
     def get_skeleton(self):
+        if self.__skeleton is None:
+            print("skeleton is None")
+            return None
         return self.__skeleton
 
     def get_control(self):
+        if self.__control is None:
+            print("control is None")
+            return None
         return self.__control
 
     def get_status(self):
+        if self.__status is None:
+            print("status is None")
+            return None
         return self.__status
 
     def _normalized_to_pixel_coordinates(self, normalized_x: float, normalized_y: float, image_width: int, image_height: int):

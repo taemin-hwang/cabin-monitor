@@ -18,9 +18,9 @@ class Control:
 
     def get_control(self, keypoints):
         self.update_status(keypoints)
-        if self._current_status != self._previous_status:
-            self._previous_status = self._current_status
-            return self._current_status.value
+        # if self._current_status != self._previous_status:
+        #     self._previous_status = self._current_status
+        return self._current_status.value
 
     def get_distance(self, point1, point2):
         return math.sqrt(((point1[0]-point2[0])**2)+((point1[1]-point2[1])**2))

@@ -8,6 +8,7 @@ class TransferInterface:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def send(self, data):
-        pass
-        # print("send data")
-        # self.socket.sendto(data, (self.ip, self.port))
+        if data is None:
+            return
+        print("send data")
+        self.socket.sendto(data, (self.ip, self.port))
