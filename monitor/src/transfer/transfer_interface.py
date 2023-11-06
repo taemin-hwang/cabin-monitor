@@ -10,5 +10,4 @@ class TransferInterface:
     def send(self, data):
         if data is None:
             return
-        print("send data")
         self.socket.sendto(data, (self.ip, self.port))

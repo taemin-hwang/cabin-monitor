@@ -1,8 +1,7 @@
 {
-    "monitor id" : 1,
-    "transfer" : "off",
-    "workpad ip" : "10.10.10.10",
+    "id" : 1,
+    "workpad ip" : "127.0.0.1",
+    "workpad port" : 50005,
     "cluster ip" : "127.0.0.1",
-    "workpad port" : "50001",
-    "cluster port" : "50001"
+    "cluster port" : 50001
 }

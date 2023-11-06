@@ -7,7 +7,7 @@ class IviTransfer(transfer_interface.TransferInterface):
     def __init__(self, id, ip, port):
         super().__init__(id, ip, port)
 
-    def send_ivi_data(self, skeleton, control, status):
+    def send_data(self, skeleton, control, status):
         if skeleton is None or control is None or status is None:
             print("skeleton or control or status is None")
             return
