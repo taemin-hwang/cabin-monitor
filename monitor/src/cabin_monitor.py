@@ -5,16 +5,14 @@ mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 mp_pose = mp.solutions.pose
 
-from service.skeleton import Skeleton
-from service.control import Control
-from service.status import Status
+from service.service_manager import ServiceManager
+from transfer.transfer_manager import TransferManager
 
 class CabinMonitor:
     def __init__(self):
+        self.service_manager = ServiceManager()
+        self.transfer_manager = TransferManager()
         self.__current_status = 1
-        self.skeleton = Skeleton()
-        self.control = Control()
-        self.status = Status()
 
     def run(self):
         # For webcam input:
@@ -29,15 +27,13 @@ class CabinMonitor:
             # resize image to 640 x 480
             image = cv2.resize(image, (640, 480))
 
-            annotations = self.skeleton.get_annotations(image)
-            if annotations is None or annotations.pose_landmarks is None:
-                continue
+            self.service_manager.run(image)
 
-            self.draw_pose_annotation(np.ones(image.shape, dtype=np.uint8)*50, annotations)
+            skeleton = self.service_manager.get_skeleton()
+            control = self.service_manager.get_control()
+            status = self.service_manager.get_status()
 
-            skeleton = self.skeleton.get_skeleton(annotations)
-            control = self.control.get_control(skeleton)
-            status = self.status.get_status(skeleton)
+            self.transfer_manager.run(skeleton, control, status)
 
             self.print_control(control)
             self.print_status(status)
@@ -46,16 +42,6 @@ class CabinMonitor:
                 break
 
         cap.release()
-
-    def draw_pose_annotation(self, image, results):
-        # Draw the pose annotation on the image.
-        mp_drawing.draw_landmarks(
-            image,
-            results.pose_landmarks,
-            mp_pose.POSE_CONNECTIONS,
-            landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style())
-        # Flip the image horizontally for a selfie-view display.
-        cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
 
     def print_control(self, control):
         if control == 1:

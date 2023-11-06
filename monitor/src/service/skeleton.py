@@ -25,7 +25,6 @@ mp_pose = mp.solutions.pose
 # "16: right_ankle"
 # "17: neck"
 
-
 class Skeleton:
     def __init__(self):
         pass
@@ -71,3 +70,28 @@ class Skeleton:
         skeleton_18[17] = (skeleton[12] + skeleton[11]) / 2 # neck
 
         return skeleton_18
+
+    def get_skeleton_11(self, skeleton_18):
+        skeleton_11 = np.zeros((11, 3))
+        skeleton_11[0] = skeleton_18[0] # nose
+        # reye
+        # leye
+        # rear
+        # lear
+        # rshoulder
+        # lshoulder
+        # relbow
+        # lelbow
+        # rwrist
+        # lwrist
+        skeleton_11[1] = skeleton_18[2]
+        skeleton_11[2] = skeleton_18[1]
+        skeleton_11[3] = skeleton_18[4]
+        skeleton_11[4] = skeleton_18[3]
+        skeleton_11[5] = skeleton_18[6]
+        skeleton_11[6] = skeleton_18[5]
+        skeleton_11[7] = skeleton_18[8]
+        skeleton_11[8] = skeleton_18[7]
+        skeleton_11[9] = skeleton_18[10]
+        skeleton_11[10] = skeleton_18[9]
+        return skeleton_11
