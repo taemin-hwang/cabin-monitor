@@ -1,15 +1,15 @@
 import wave
 import os, sys
 
-from service.kakao import kakao_stt
+import whisper
 
 class Voice:
     def __init__(self):
-        self.kakao = kakao_stt.KakaoStt()
         self.channels = 1
         self.rate = 16000
         self.record_seconds = 5
         self.filename = 'tmp.wav'
+        self.model = whisper.load_model("small")
 
     def __del__(self):
         print('destroy speech manager')
@@ -17,10 +17,6 @@ class Voice:
     def init(self):
         print('initialize speech manager')
         self.kakao.init()
-
-    def run(self):
-        print('run speech manager')
-        self.kakao.run()
 
     def shutdown(self):
         print('shutdown speech manager')
@@ -39,8 +35,9 @@ class Voice:
 
         os.system(command)
         # text = self.kakao.get_text_from_wav(self.filename)
-        text = self.kakao.get_text_from_wav("heykakao.wav")
-
+        # text = self.kakao.get_text_from_wav("./src/service/kakao/heykakao.wav")
+        result = self.model.transcribe("./src/service/heykakao.wav", language="ko")
+        text = result["text"]
         print('STT result : ' + text)
 
         if text != 'no such file':
