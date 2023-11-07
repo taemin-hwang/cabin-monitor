@@ -1,14 +1,12 @@
 import requests
 import json
-import logger
-import logging
 
 class KakaoStt:
     def __init__(self):
-        self.logger = logging.getLogger('log')
+        pass
 
     def init(self):
-        self.logger.info('initialize kakao stt')
+        print('initialize kakao stt')
         self.kakao_speech_url = "https://kakaoi-newtone-openapi.kakao.com/v1/recognize"
         self.rest_api_key = '89265aa43ac1b275d068d8acae36b70f'
         self.headers = {
@@ -18,14 +16,14 @@ class KakaoStt:
         }
 
     def get_text_from_wav(self, filename):
-        self.logger.info('read wav file from ' + filename)
+        print('read wav file from ' + filename)
 
         try:
             fp = open(filename, 'rb')
             audio = fp.read()
         except:
-            self.logger.error('cannot open ' + filename)
-            text = 'no such file'
+            print('cannot open ' + filename)
+            text = 'error'
             return text
 
         res = requests.post(self.kakao_speech_url, headers=self.headers, data=audio)

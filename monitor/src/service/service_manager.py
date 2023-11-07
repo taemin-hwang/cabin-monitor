@@ -10,13 +10,14 @@ mp_pose = mp.solutions.pose
 from service.skeleton import Skeleton
 from service.control import Control
 from service.status import Status
-
+from service.voice import Voice
 
 class ServiceManager:
     def __init__(self):
         self.skeleton = Skeleton()
         self.control = Control()
         self.status = Status()
+        self.voice = Voice()
 
         self.__skeleton = None
         self.__control = None
@@ -110,4 +111,5 @@ class ServiceManager:
             return None
         return self.__status
 
-
+    def get_voice(self):
+        return self.voice.get_voice()

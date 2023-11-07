@@ -2,6 +2,7 @@ from transfer import transfer_interface
 
 import struct
 import numpy as np
+import asyncio
 
 class IviTransfer(transfer_interface.TransferInterface):
     def __init__(self, id, ip, port):

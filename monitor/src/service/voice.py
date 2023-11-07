@@ -1,13 +1,10 @@
 import wave
 import os, sys
-import logging
-import logger
 
 from service.kakao import kakao_stt
 
-class VoiceManager:
+class Voice:
     def __init__(self):
-        self.logger = logging.getLogger('log')
         self.kakao = kakao_stt.KakaoStt()
         self.channels = 1
         self.rate = 16000
@@ -15,21 +12,21 @@ class VoiceManager:
         self.filename = 'tmp.wav'
 
     def __del__(self):
-        self.logger.info('destroy speech manager')
+        print('destroy speech manager')
 
     def init(self):
-        self.logger.info('initialize speech manager')
+        print('initialize speech manager')
         self.kakao.init()
 
     def run(self):
-        self.logger.info('run speech manager')
+        print('run speech manager')
         self.kakao.run()
 
     def shutdown(self):
-        self.logger.info('shutdown speech manager')
+        print('shutdown speech manager')
 
-    def get_text_from_voice(self):
-        self.logger.info('get text from voice')
+    def get_voice(self):
+        print('get text from voice')
         #arecord -r16000 -c1 -twav -fS16_LE -Dplughw:2,0 test16k.wav
         command = 'arecord '
         command += '-r'+str(self.rate)+' '
@@ -41,10 +38,10 @@ class VoiceManager:
         command += self.filename
 
         os.system(command)
-        text = self.kakao.get_text_from_wav(self.filename)
-        #text = self.kakao.get_text_from_wav("heykakao.wav")
+        # text = self.kakao.get_text_from_wav(self.filename)
+        text = self.kakao.get_text_from_wav("heykakao.wav")
 
-        self.logger.info('STT result : ' + text)
+        print('STT result : ' + text)
 
         if text != 'no such file':
             os.remove(self.filename)

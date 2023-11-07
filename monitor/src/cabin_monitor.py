@@ -15,6 +15,9 @@ class CabinMonitor:
         self.__current_status = 1
 
     def run(self):
+        self.transfer_manager.init()
+        self.transfer_manager.set_recv_handler(self.service_manager.get_voice)
+
         # For webcam input:
         cap = cv2.VideoCapture(0)
 
