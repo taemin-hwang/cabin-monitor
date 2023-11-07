@@ -13,5 +13,5 @@ The Cabin Crew Monitoring System is an interactive application designed to monit
 ### Preparation
 ```
 pip3 install -q mediapipe
-pip install -U openai-whisper
+pip3 install -U openai-whisper
 ```
