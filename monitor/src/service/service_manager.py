@@ -22,10 +22,15 @@ class ServiceManager:
         self.__control = None
         self.__status = None
 
+        self.is_updated = False
+
     def run(self, image):
         annotations = self.skeleton.get_annotations(image)
         if annotations is None or annotations.pose_landmarks is None:
+            self.is_updated = False
             return
+
+        self.is_updated = True
 
         skeleton_18 = self.skeleton.get_skeleton(image, annotations)
         self.__control = self.control.get_control(skeleton_18)
@@ -34,6 +39,7 @@ class ServiceManager:
 
         # background = np.ones((image.shape[0], image.shape[1], 3), dtype=np.uint8) * 50
         self.draw_skeleton(image, self.__skeleton)
+        return image
 
     def draw_skeleton(self, image, skeleton):
         # Draw the pose annotation on the image.
@@ -85,8 +91,6 @@ class ServiceManager:
                 continue
 
             cv2.line(image, (int(keypoint_start[0]), int(keypoint_start[1])), (int(keypoint_end[0]), int(keypoint_end[1])), color, 2)
-
-        cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
 
     def get_skeleton(self):
         if self.__skeleton is None:

@@ -1,7 +1,7 @@
 {
-    "id" : 1,
+    "id" : 0,
     "workpad ip" : "127.0.0.1",
     "workpad port" : 50005,
     "cluster ip" : "127.0.0.1",
-    "cluster port" : 50001
+    "cluster port" : 50002
 }

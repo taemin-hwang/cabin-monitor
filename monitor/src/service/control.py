@@ -18,8 +18,10 @@ class Control:
 
     def get_control(self, keypoints):
         self.update_status(keypoints)
-        # if self._current_status != self._previous_status:
-        #     self._previous_status = self._current_status
+        if self._current_status != self._previous_status:
+            self._previous_status = self._current_status
+        else:
+            return ControlStatus.INVALID.value
         return self._current_status.value
 
     def get_distance(self, point1, point2):
@@ -29,6 +31,13 @@ class Control:
         right_elbow = keypoints[8]
         right_wrist = keypoints[10]
         shoulder_distance = self.get_distance(keypoints[6], keypoints[5])
+
+        if right_wrist[2] < 0.3 or right_elbow[2] < 0.3:
+            self._current_status = ControlStatus.INVALID
+            return
+        if keypoints[5][2] < 0.3 or keypoints[6][2] < 0.3:
+            self._current_status = ControlStatus.INVALID
+            return
 
         # if self._current_status == ControlStatus.INVALID:
         elbow_to_wrist_dist = self.get_distance(right_elbow, right_wrist)

@@ -28,15 +28,17 @@ class CabinMonitor:
             image = cv2.resize(image, (640, 480))
 
             self.service_manager.run(image)
+            if (self.service_manager.is_updated):
+                skeleton = self.service_manager.get_skeleton()
+                control = self.service_manager.get_control()
+                status = self.service_manager.get_status()
 
-            skeleton = self.service_manager.get_skeleton()
-            control = self.service_manager.get_control()
-            status = self.service_manager.get_status()
+                self.transfer_manager.run(skeleton, control, status)
 
-            self.transfer_manager.run(skeleton, control, status)
+                self.print_control(control)
+                self.print_status(status)
 
-            self.print_control(control)
-            self.print_status(status)
+            cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
 
             if cv2.waitKey(1) == ord('q'):
                 break
