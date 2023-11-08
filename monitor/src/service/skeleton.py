@@ -30,7 +30,7 @@ mp_pose = mp.solutions.pose
 class Skeleton:
     def __init__(self):
         self.pose = mp_pose.Pose(
-            model_complexity=2,
+            model_complexity=1,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5)
 
