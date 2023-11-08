@@ -4,42 +4,42 @@ import math
 class Status:
     def __init__(self):
         self._status = 1
-        self.__reference_distances = {
-            'eye': 40,
-            'eye_to_nose': 30,
-        }
+        pass
 
     def get_status(self, keypoints):
-        # Extract the keypoints
-        left_eye = keypoints[1] # left_eye
-        right_eye = keypoints[2] # right_eye
-        nose = keypoints[0] # nose
-        left_ear = keypoints[3] # left_ear
-        right_ear = keypoints[4] # right_ear
+        p_nose = keypoints[0] # nose
+        p_leye = keypoints[1] # left_eye
+        p_reye = keypoints[2] # right_eye
+        p_lear = keypoints[3] # left_ear
+        p_rear = keypoints[4] # right_ear
+        p_lshoulder = keypoints[5]
+        p_rshoulder = keypoints[6]
 
-        # print("eye_to_nose", np.linalg.norm(keypoints[1] - keypoints[0]))
-        # print("eye_to_eye", np.linalg.norm(keypoints[1] - keypoints[2]))
+        d1 = math.sqrt(((p_leye[0]-p_lear[0])**2)+((p_leye[1]-p_lear[1])**2))
+        d2 = math.sqrt(((p_reye[0]-p_rear[0])**2)+((p_reye[1]-p_rear[1])**2))
+        d_shoulder = math.sqrt(((p_lshoulder[0]-p_rshoulder[0])**2)+((p_lshoulder[1]-p_rshoulder[1])**2))
 
-        # Calculate pitch
-        eye_nose_distance = (np.linalg.norm(nose - left_eye) + np.linalg.norm(nose - right_eye)) / 2
-        pitch_degrees = (self.__reference_distances['eye_to_nose'] - eye_nose_distance) * 90 / self.__reference_distances['eye_to_nose']
+        status = 1
 
-        # Calculate yaw
-        eye_distance = np.linalg.norm(right_eye - left_eye)
-        yaw_degrees = (1 - (eye_distance / self.__reference_distances['eye'])) * 180
+        if d1 == 0 or d2 == 0 or d_shoulder == 0:
+            return self._status
 
-        left_ear_distance = np.linalg.norm(left_eye - left_ear)
-        right_ear_distance = np.linalg.norm(right_eye - right_ear)
+        d1_ratio = d1 / d_shoulder
+        d2_ratio = d2 / d_shoulder
 
-        if left_ear_distance > right_ear_distance:  # Adjust the yaw angle based on the direction the face is turned
-            yaw_degrees = -yaw_degrees
+        # print("p_leye[0]", p_leye[0])
+        # print("p_lear[0]", p_lear[0])
+        # print("p_reye[0]", p_reye[0])
+        # print("p_rear[0]", p_rear[0])
 
-        if yaw_degrees > 30:
+        if (d1_ratio < 0.04 or d2_ratio < 0.04) :
             status = 2
-        elif yaw_degrees < -30:
-            status = 3
+        elif (p_leye[0] > p_lear[0] or p_reye[0] < p_rear[0]):
+            status = 2
         else:
             status = 1
+
+        # print("status : ", status)
 
         self._status = status
         return self._status
