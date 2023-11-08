@@ -24,6 +24,6 @@ class TransferManager:
     def set_recv_handler(self, f):
         self.cluster_transfer.set_recv_handler(f)
 
-    def run(self, skeleton, control, status):
-        self.cluster_transfer.send_data(skeleton, control, status)
+    def run(self, skeleton, control, status, gaze):
+        self.cluster_transfer.send_data(skeleton, control, status, gaze)
         self.ivi_transfer.send_data(skeleton, control, status)

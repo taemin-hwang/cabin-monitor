@@ -35,8 +35,9 @@ class CabinMonitor:
                 skeleton = self.service_manager.get_skeleton()
                 control = self.service_manager.get_control()
                 status = self.service_manager.get_status()
+                gaze = self.service_manager.get_gaze()
 
-                self.transfer_manager.run(skeleton, control, status)
+                self.transfer_manager.run(skeleton, control, status, gaze)
 
                 self.print_control(control)
                 self.print_status(status)

@@ -33,7 +33,7 @@ class ClusterTransfer(transfer_interface.TransferInterface):
         print(json_string)
         self.send(json_string.encode())
 
-    def send_data(self, skeleton, control, status):
+    def send_data(self, skeleton, control, status, gaze):
         # {
         #   id : 1,
         #   status : 1,
@@ -53,6 +53,7 @@ class ClusterTransfer(transfer_interface.TransferInterface):
             'type' : 0, # skeleton
             'status': status,
             'control': control,
+            'gaze': gaze,
             'skeleton': skeleton.tolist()
         }
 

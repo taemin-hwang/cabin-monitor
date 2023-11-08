@@ -11,6 +11,7 @@ from service.skeleton import Skeleton
 from service.control import Control
 from service.status import Status
 from service.voice import Voice
+from service.gaze import Gaze
 
 class ServiceManager:
     def __init__(self):
@@ -18,10 +19,12 @@ class ServiceManager:
         self.control = Control()
         self.status = Status()
         self.voice = Voice()
+        self.gaze = Gaze()
 
         self.__skeleton = None
         self.__control = None
         self.__status = None
+        self.__gaze = None
 
         self.is_updated = False
 
@@ -37,6 +40,7 @@ class ServiceManager:
         self.__control = self.control.get_control(skeleton_18)
         self.__status = self.status.get_status(skeleton_18)
         self.__skeleton = self.skeleton.get_skeleton_11(skeleton_18)
+        self.__gaze = self.gaze.estimate_pose(skeleton_18)
 
         # background = np.ones((image.shape[0], image.shape[1], 3), dtype=np.uint8) * 50
         self.draw_skeleton(image, self.__skeleton)
@@ -113,3 +117,9 @@ class ServiceManager:
 
     def get_voice(self):
         return self.voice.get_voice()
+
+    def get_gaze(self):
+        if self.__gaze is None:
+            print("gaze is None")
+            return None
+        return self.__gaze

@@ -1,15 +1,14 @@
 import numpy as np
-import math
 
-class Status:
+class Gaze:
     def __init__(self):
-        self._status = 1
         self.__reference_distances = {
             'eye': 40,
             'eye_to_nose': 30,
         }
 
-    def get_status(self, keypoints):
+
+    def estimate_pose(self, keypoints):
         # Extract the keypoints
         left_eye = keypoints[1] # left_eye
         right_eye = keypoints[2] # right_eye
@@ -34,12 +33,8 @@ class Status:
         if left_ear_distance > right_ear_distance:  # Adjust the yaw angle based on the direction the face is turned
             yaw_degrees = -yaw_degrees
 
-        if yaw_degrees > 30:
-            status = 2
-        elif yaw_degrees < -30:
-            status = 3
-        else:
-            status = 1
+        # print("roll_degrees", roll_degrees)
+        # print("pitch_degrees", pitch_degrees)
+        # print("yaw_degrees", yaw_degrees)
 
-        self._status = status
-        return self._status
+        return int(yaw_degrees)
