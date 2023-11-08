@@ -10,7 +10,7 @@ public class TouchManager : MonoBehaviour
     private float rotationAngle = 270.0f;
     // 회전에 걸리는 시간 (초)
     private float duration = 1.0f;
-    private int repetition = 5;
+    private int repetition = 12;
 
     Ray ray;
 	RaycastHit hit;
@@ -20,7 +20,9 @@ public class TouchManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-
+        transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
+        StartCoroutine(ScaleOverTime(3f));
+        StartCoroutine(RotateOverTime(rotationAngle, duration));
     }
 
     // Update is called once per frame
@@ -28,13 +30,7 @@ public class TouchManager : MonoBehaviour
     {
         ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if(Physics.Raycast(ray, out hit)) {
-        #if UNITY_EDITOR
-            // 마우스 클릭 시
             if (Input.GetMouseButtonDown(0))
-        #else
-            // 터치 시
-            if (Input.touchCount > 0)
-        #endif
             {
                 StartCoroutine(RotateOverTime(rotationAngle, duration));
                 if (_callbackTouch != null) {
@@ -79,5 +75,21 @@ public class TouchManager : MonoBehaviour
         }
     }
 
+    IEnumerator ScaleOverTime(float time)
+    {
+        Vector3 originalScale = transform.localScale; // 현재 스케일
+        Vector3 targetScale = new Vector3(0.7f, 0.7f, 0.7f); // 목표 스케일
 
+        float currentTime = 0.0f;
+
+        do
+        {
+            // Lerp 함수를 사용하여 점진적으로 scale 값을 변경
+            transform.localScale = Vector3.Lerp(originalScale, targetScale, currentTime / time);
+            currentTime += Time.deltaTime; // 현재 경과 시간 업데이트
+            yield return null; // 다음 프레임까지 기다림
+        } while (currentTime <= time);
+
+        transform.localScale = targetScale; // 마지막으로 scale 값을 정확하게 목표값으로 설정
+    }
 }

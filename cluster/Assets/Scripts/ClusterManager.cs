@@ -8,9 +8,11 @@ public class ClusterManager : MonoBehaviour
     public GameObject messageObject;
     public GameObject voiceeObject;
     public GameObject touchObject;
+    public GameObject clusterInfoObject;
     public Light directionalLight;
     public List<GameObject> Cabins = new List<GameObject>(new GameObject[4]);
     public List<Vector3> CabinPositions = new List<Vector3>(new Vector3[4]);
+    public List<Vector3> TargetPositions = new List<Vector3>(new Vector3[4]);
 
     private ReceiveSkeleton _SkeletonReceiver;
     private SkeletonData _SkeletonData;
@@ -22,13 +24,15 @@ public class ClusterManager : MonoBehaviour
     private TMP_Text _voiceText;
     private TouchManager _touchManager;
 
+    private HMI.UI.Cluster.ClusterInfoController _clusterInfoController;
+
     void Start()
     {
         _messageText = messageObject.GetComponent<TMP_Text>();
         _voiceText = voiceeObject.GetComponent<TMP_Text>();
         _touchManager = touchObject.GetComponent<TouchManager>();
+        _clusterInfoController = clusterInfoObject.GetComponent<HMI.UI.Cluster.ClusterInfoController>();
         _touchManager.SetTouchCallback(new CallbackTouch(TouchHandler));
-        // directionalLight.intensity = 4.0f;
 
         _messageText.text = "";
         _voiceText.text = "";
@@ -40,6 +44,7 @@ public class ClusterManager : MonoBehaviour
         for (int i = 0; i < Cabins.Count; i++) {
             Cabins[i].SetActive(false);
             CabinPositions[i] = Cabins[i].transform.position;
+            TargetPositions[i] = Cabins[i].GetComponent<DriverController>().target.position;
         }
     }
 
@@ -47,25 +52,42 @@ public class ClusterManager : MonoBehaviour
     {
         if (_IsUpdated) {
             UpdateCluster(_SkeletonData);
+            _IsUpdated = false;
         }
         if (_IsVoiceUpdated) {
             StartCoroutine(ShowTextForSeconds(_VoiceData.voice, 3.0f));
             _IsVoiceUpdated = false;
         }
+        RenderSettings.skybox.SetFloat("_Rotation", Time.time * 0.8f);
     }
 
     void UpdateCluster(SkeletonData skeleton_data) {
         int id = skeleton_data.id;
         int status = skeleton_data.status;
         int control = skeleton_data.control;
+        int gaze = skeleton_data.gaze;
         List<List<double>> skeleton = skeleton_data.skeleton;
+
+        if (gaze > 40) {
+            gaze = 40;
+        } else if (gaze < -40) {
+            gaze = -40;
+        }
 
         if(id == 0) { // Driver
             if(status == 1) {
                 _messageText.text = "정상 운행 중";
+                if(control == 3) {
+                    Debug.Log("[ClusterManager] LEFT");
+                    _clusterInfoController.Previous();
+                } else if (control == 4) {
+                    Debug.Log("[ClusterManager] RIGHT");
+                    _clusterInfoController.Next();
+                }
             } else if (status == 2 || status == 3) {
                 _messageText.text = "운전 부주의";
             }
+            UpdateGaze(id, Cabins[id], gaze);
         }
 
         if (skeleton[5][2] > 0.3 && skeleton[6][2] > 0.3) { // Left and Right Shoulder
@@ -75,7 +97,7 @@ public class ClusterManager : MonoBehaviour
             }
             _CabinCount[id] = 0;
         } else {
-            if (_CabinCount[id] > 60 * 3) {
+            if (_CabinCount[id] > 60 * 10) {
                 Cabins[id].SetActive(false);
             }
             _CabinCount[id] += 1;
@@ -102,11 +124,32 @@ public class ClusterManager : MonoBehaviour
     IEnumerator ShowTextForSeconds(string text, float seconds)
     {
         if (text == "error") {
-            text = "음성 인식에 실패했습니다";
+            text = "다시 한 번 말씀해주세요";
         }
+
+        if (text.Contains("어둡게")) {
+            directionalLight.intensity = 1f;
+        } else if (text.Contains("밝게")) {
+            directionalLight.intensity = 2f;
+        }
+
         _voiceText.text = text;
         yield return new WaitForSeconds(seconds);
         _voiceText.text = "";
+    }
+
+    void UpdateGaze(int id, GameObject cabin, int gaze) {
+        DriverController controller = cabin.GetComponent<DriverController>();
+        Transform target = controller.target;
+        // target.localPosition = new Vector3(gaze / -40f, 1.3f, 0.5f);
+        Vector3 target_position = new Vector3(TargetPositions[id].x, TargetPositions[id].y, gaze / -40f + TargetPositions[id].z);
+
+        // Debug.Log("Initial Position: " + TargetPositions[id]);
+        // Debug.Log("Target  Position: " + target_position);
+
+        // Convert local Position to world Position
+
+        target.position = Vector3.MoveTowards(target.position, target_position, 20f * Time.deltaTime);
     }
 
     void TouchHandler() {

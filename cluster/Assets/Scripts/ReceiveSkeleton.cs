@@ -17,6 +17,7 @@ public class SkeletonData
     public int type { get; set; }
     public int status { get; set; }
     public int control { get; set; }
+    public int gaze { get; set; }
     public List<List<double>> skeleton = new List<List<double>>();
 }
 
@@ -96,7 +97,7 @@ public class ReceiveSkeleton
         }
         Debug.Log("Send STT Request : " + _DriverIpAddr + ", " + _DriverPort);
         UdpClient client = new UdpClient();
-        IPEndPoint ep = new IPEndPoint(IPAddress.Parse(_IpAddr), _DriverPort);
+        IPEndPoint ep = new IPEndPoint(IPAddress.Parse(_DriverIpAddr), _DriverPort);
         byte[] sendBytes = Encoding.UTF8.GetBytes("stt");
         client.Send(sendBytes, sendBytes.Length, ep);
         client.Close();
