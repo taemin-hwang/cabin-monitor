@@ -15,6 +15,7 @@ class Control:
         self._current_status = ControlStatus.INVALID
         self._previous_status = ControlStatus.INVALID
         self._idle_elbow = [0, 0]
+        self._idle_wrist = [0, 0]
 
     def get_control(self, keypoints):
         self.update_status(keypoints)
@@ -46,6 +47,7 @@ class Control:
         if (elbow_to_wrist_ratio < 0.5):
             self._current_status = ControlStatus.IDLE
             self._idle_elbow = [right_elbow[0], right_elbow[1]]
+            self._idle_wrist = [right_wrist[0], right_wrist[1]]
 
         elif self._current_status == ControlStatus.IDLE:
             elbow_to_idle_elbow_dist = self.get_distance(right_elbow, self._idle_elbow)
@@ -55,25 +57,35 @@ class Control:
             else:
                 elbow_to_wrist_dist = self.get_distance(right_elbow, right_wrist)
                 elbow_to_wrist_ratio = elbow_to_wrist_dist / shoulder_distance
-                if elbow_to_wrist_ratio > 0.55:
+                if elbow_to_wrist_ratio > 0.5:
                     elbow_x = right_elbow[0]
                     elbow_y = right_elbow[1]
                     wrist_x = right_wrist[0]
                     wrist_y = right_wrist[1]
 
-                    x_diff = wrist_x - elbow_x
-                    y_diff = wrist_y - elbow_y
+                    x_diff = wrist_x - self._idle_wrist[0]
+                    y_diff = wrist_y - self._idle_wrist[1]
                     abs_x_diff = abs(x_diff)
                     abs_y_diff = abs(y_diff)
-                    #print("1", abs_x_diff / abs_y_diff) # RIGHT OR LEFT
-                    #print("2", abs_y_diff / abs_x_diff) # UP OR DOWN
-                    if abs_x_diff / abs_y_diff > 0.8:
-                        if x_diff > 0:
-                            self._current_status = ControlStatus.LEFT
+
+                    # print("abs_x_diff - abs_y_diff", abs_x_diff - abs_y_diff)
+
+                    if abs_x_diff == 0 or abs_y_diff == 0:
+                        pass
+                    else:
+                        if abs_x_diff / abs_y_diff < 1.2 and abs_y_diff / abs_x_diff < 1.2:
+                            self._current_status = ControlStatus.INVALID
+                            return
                         else:
-                            self._current_status = ControlStatus.RIGHT
-                    elif abs_y_diff / abs_x_diff > 1.8:
-                        if y_diff > 0:
-                            self._current_status = ControlStatus.DOWN
-                        else:
-                            self._current_status = ControlStatus.UP
+                            if abs_x_diff > abs_y_diff:
+                                # print("x_diff", x_diff)
+                                if x_diff > 0:
+                                    self._current_status = ControlStatus.LEFT
+                                else:
+                                    self._current_status = ControlStatus.RIGHT
+                            else:
+                                # print("y_diff", y_diff)
+                                if y_diff > 0:
+                                    self._current_status = ControlStatus.DOWN
+                                else:
+                                    self._current_status = ControlStatus.UP
