@@ -7,6 +7,8 @@ import os
 import re
 from sklearn.cluster import DBSCAN
 from collections import deque
+import threading
+import concurrent.futures
 
 from utils import *
 from transfer_manager import TransferManager
@@ -26,6 +28,10 @@ class BoardManager:
             self.start_fid, self.end_fid = self.get_frame_id_range(self.load)
             print(f"Read from {self.start_fid:06d} to {self.end_fid:06d} in {self.load}")
 
+        # 각 채널과 cnt 별로 패킷 데이터를 저장할 배열
+        self.packet_data_image = {ch: [None] * 104 for ch in range(4)}
+        self.packet_data_heatmap = {ch: [None] * 24 for ch in range(4)}
+
     def shutdown(self):
         self.transfer_manager.shutdown()
 
@@ -35,15 +41,41 @@ class BoardManager:
         frame_id = self.start_fid
         step_wise = False
 
-        # 각 채널과 cnt 별로 패킷 데이터를 저장할 배열
-        packet_data_image = {ch: [None] * 104 for ch in range(4)}
-        packet_data_heatmap = {ch: [None] * 24 for ch in range(4)}
-
         window_name = "HVI OUT"
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 700, 500)
 
+        # 데이터 수신 및 처리 작업을 병렬로 수행
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            futures = [executor.submit(self.make_chunk, i) for i in range(1)]
+            print("ready to make chunk")
+
+            while True:
+                combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
+                cv2.imshow(window_name, combined_image)
+                key = cv2.waitKey(1)
+                if self.load != "" and not step_wise and key == ord('s'):
+                    step_wise = True
+                if key == ord('q'):
+                    break
+                if step_wise:
+                    while True:
+                        key = cv2.waitKey(1)
+                        if key == ord('s'):
+                            break
+                        elif key == ord('a'):
+                            step_wise = False
+                            break
+
+            for future in futures:
+                future.cancel()
+
+        cv2.destroyAllWindows()
+
+    def make_chunk(self, i):
+        print(f"make chunk {i}")
         total_bytes = IMAGE_WIDTH * IMAGE_HEIGHT * 3
+        frame_id = 0
         while True:
             if self.load is None:
                 stx, length_field, ch, count, payload, csum, etx = self.transfer_manager.get_data()
@@ -54,49 +86,16 @@ class BoardManager:
                     continue
 
                 if stx == 0x20:
-                    packet_data_image[ch][count] = payload
-                    if count == 103:  # End of image
-                        print(f"Received full image for channel {ch}")
-                        full_payload = b''.join([pkt for pkt in packet_data_image[ch] if pkt is not None])
-
-                        if len(full_payload) >= total_bytes:
-                            # 전체 이미지를 결합하여 표시
-                            combined_image = self.combine_channel_images(packet_data_image, packet_data_heatmap)
-                            cv2.imshow(window_name, combined_image)
-
-                            frame_id += 1
-                        else:
-                            print(f"Error: Incomplete image data received for channel {ch}.")
-
+                    self.packet_data_image[ch][count] = payload
                 elif stx == 0x02:
-                    packet_data_heatmap[ch][count] = payload
+                    self.packet_data_heatmap[ch][count] = payload
             else:
                 if frame_id >= self.end_fid:
                     break
-
                 for ch in range(4):
-                    packet_data_image[ch], packet_data_heatmap[ch] = self.read_file(ch, frame_id)
-
-                combined_image = self.combine_channel_images(packet_data_image, packet_data_heatmap)
-                cv2.imshow(window_name, combined_image)
+                    self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
 
                 frame_id += 1
-
-            key = cv2.waitKey(1)
-            if self.load != "" and not step_wise and key == ord('s'):
-                step_wise = True
-            if key == ord('q'):
-                break
-            if step_wise:
-                while True:
-                    key = cv2.waitKey(1)
-                    if key == ord('s'):
-                        break
-                    elif key == ord('a'):
-                        step_wise = False
-                        break
-
-        cv2.destroyAllWindows()
 
     def read_file(self, ch, frame_id):
         image_filename = f"image-{ch}-{frame_id:06d}"
