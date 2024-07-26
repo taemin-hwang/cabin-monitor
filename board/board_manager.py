@@ -22,7 +22,7 @@ class BoardManager:
 
     def init(self):
         self.transfer_manager.init()
-        if self.load != "":
+        if self.load is not None:
             self.start_fid, self.end_fid = self.get_frame_id_range(self.load)
             print(f"Read from {self.start_fid:06d} to {self.end_fid:06d} in {self.load}")
 
@@ -45,7 +45,7 @@ class BoardManager:
 
         total_bytes = IMAGE_WIDTH * IMAGE_HEIGHT * 3
         while True:
-            if self.load == "":
+            if self.load is None:
                 stx, length_field, ch, count, payload, csum, etx = self.transfer_manager.get_data()
 
                 if stx is None or ch > 3:
