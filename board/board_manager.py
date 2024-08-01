@@ -8,7 +8,9 @@ import re
 from sklearn.cluster import DBSCAN
 from collections import deque
 import threading
+import copy
 import concurrent.futures
+import time
 
 from utils import *
 from transfer_manager import TransferManager
@@ -52,13 +54,14 @@ class BoardManager:
             futures = [executor.submit(self.make_chunk, i) for i in range(1)]
             print("ready to make chunk")
 
+            # 이미지 저장 스레드 시작
+            save_thread = threading.Thread(target=self.periodic_save, args=(folder,))
+            save_thread.daemon = True
+            save_thread.start()
+
             while True:
                 combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
                 cv2.imshow(window_name, combined_image)
-
-                # for ch in range(4):
-                    # self.save_image_and_heatmap(folder, ch, frame_id, self.packet_data_image[ch], self.packet_data_heatmap[ch], combined_image)
-
                 key = cv2.waitKey(10)
                 frame_id += 1
                 if self.load != "" and not step_wise and key == ord('s'):
@@ -78,6 +81,19 @@ class BoardManager:
                 future.cancel()
 
         cv2.destroyAllWindows()
+
+    def periodic_save(self, folder):
+        frame_id = 0
+        while True:
+            time.sleep(1)  # 1초 간격으로 실행
+            for ch in range(4):
+                # 깊은 복사로 현재 데이터를 저장
+                image_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_image[ch] if pkt is not None]
+                heatmap_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_heatmap[ch] if pkt is not None]
+                if image_copy and heatmap_copy:
+                    combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
+                    self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy, combined_image)
+            frame_id += 1
 
     def make_chunk(self, i):
         print(f"make chunk {i}")
@@ -302,18 +318,17 @@ class BoardManager:
     def save_image_and_heatmap(self, folder, ch, frame_id, image_array, heatmap_array, combined_image):
         # 파일 이름 생성
         # image_filename = f"image-{ch}-{frame_id:06d}.bin"
-        full_payload = b''.join([pkt for pkt in image_array if pkt is not None])
-        if len(full_payload) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
-            image_array = np.frombuffer(full_payload[:IMAGE_WIDTH * IMAGE_HEIGHT * 3], dtype=np.uint8)
+        image_array = b''.join([pkt for pkt in image_array if pkt is not None])
+        image_array = np.frombuffer(image_array[:IMAGE_WIDTH * IMAGE_HEIGHT * 3], dtype=np.uint8)
         image = image_array.reshape((IMAGE_HEIGHT, IMAGE_WIDTH, 3))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         heatmap_array = b''.join([pkt for pkt in heatmap_array if pkt is not None])
         heatmap_array = np.frombuffer(heatmap_array[:HEATMAP_WIDTH * HEATMAP_HEIGHT * NUM_KEYPOINTS], dtype=np.uint8)
 
-        heatmap_filename = f"heatmap-{ch}-{frame_id:06d}.bin"
-        image_jpg_filename = f"image-{ch}-{frame_id:06d}.jpg"
-        output_jpg_filename = f"heatmap-{ch}-{frame_id:06d}.jpg"
+        heatmap_filename = f"heatmap-{frame_id:06d}-{ch}.bin"
+        image_jpg_filename = f"image-{frame_id:06d}-{ch}.jpg"
+        output_jpg_filename = f"heatmap-{frame_id:06d}-{ch}.jpg"
 
         # 파일 경로 생성
         # image_path = os.path.join(folder, image_filename)
