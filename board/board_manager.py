@@ -45,6 +45,8 @@ class BoardManager:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 700, 500)
 
+        folder = self.create_log_folder()
+
         # 데이터 수신 및 처리 작업을 병렬로 수행
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             futures = [executor.submit(self.make_chunk, i) for i in range(1)]
@@ -53,14 +55,19 @@ class BoardManager:
             while True:
                 combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
                 cv2.imshow(window_name, combined_image)
-                key = cv2.waitKey(1)
+
+                # for ch in range(4):
+                    # self.save_image_and_heatmap(folder, ch, frame_id, self.packet_data_image[ch], self.packet_data_heatmap[ch], combined_image)
+
+                key = cv2.waitKey(10)
+                frame_id += 1
                 if self.load != "" and not step_wise and key == ord('s'):
                     step_wise = True
                 if key == ord('q'):
                     break
                 if step_wise:
                     while True:
-                        key = cv2.waitKey(1)
+                        key = cv2.waitKey(10)
                         if key == ord('s'):
                             break
                         elif key == ord('a'):
@@ -86,8 +93,12 @@ class BoardManager:
                     continue
 
                 if stx == 0x20:
+                    if count == 103:
+                        print(f"Received full image for channel {ch}")
                     self.packet_data_image[ch][count] = payload
                 elif stx == 0x02:
+                    if count == 13:
+                        print(f"Received full hvi for channel {ch}")
                     self.packet_data_heatmap[ch][count] = payload
             else:
                 if frame_id >= self.end_fid:
@@ -277,21 +288,41 @@ class BoardManager:
 
         return combined_image
 
-    def save_image_and_heatmap(self, folder, ch, frame_id, image_array, heatmap_array, heatmap_image):
+    def create_log_folder(self):
+        # 현재 날짜와 시간을 yymmddhhmmss 형식으로 가져옴
+        current_time = datetime.now().strftime("%y%m%d%H%M%S")
+        # 폴더 이름을 생성
+        folder_name = f"log-{current_time}"
+
+        # 폴더 생성
+        os.makedirs(folder_name, exist_ok=True)
+        print(f"Folder '{folder_name}' created successfully.")
+        return folder_name
+
+    def save_image_and_heatmap(self, folder, ch, frame_id, image_array, heatmap_array, combined_image):
         # 파일 이름 생성
-        image_filename = f"image-{ch}-{frame_id:06d}.bin"
+        # image_filename = f"image-{ch}-{frame_id:06d}.bin"
+        full_payload = b''.join([pkt for pkt in image_array if pkt is not None])
+        if len(full_payload) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
+            image_array = np.frombuffer(full_payload[:IMAGE_WIDTH * IMAGE_HEIGHT * 3], dtype=np.uint8)
+        image = image_array.reshape((IMAGE_HEIGHT, IMAGE_WIDTH, 3))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        heatmap_array = b''.join([pkt for pkt in heatmap_array if pkt is not None])
+        heatmap_array = np.frombuffer(heatmap_array[:HEATMAP_WIDTH * HEATMAP_HEIGHT * NUM_KEYPOINTS], dtype=np.uint8)
+
         heatmap_filename = f"heatmap-{ch}-{frame_id:06d}.bin"
         image_jpg_filename = f"image-{ch}-{frame_id:06d}.jpg"
-        heatmap_jpg_filename = f"heatmap-{ch}-{frame_id:06d}.jpg"
+        output_jpg_filename = f"heatmap-{ch}-{frame_id:06d}.jpg"
 
         # 파일 경로 생성
-        image_path = os.path.join(folder, image_filename)
+        # image_path = os.path.join(folder, image_filename)
         heatmap_path = os.path.join(folder, heatmap_filename)
         image_jpg_path = os.path.join(folder, image_jpg_filename)
-        heatmap_jpg_path = os.path.join(folder, heatmap_jpg_filename)
+        output_jpg_path = os.path.join(folder, output_jpg_filename)
 
         # 이미지 저장
-        image_array.astype('int8').tofile(image_path)
+        # image_array.astype('int8').tofile(image_path)
         heatmap_array.astype('int8').tofile(heatmap_path)
-        cv2.imwrite(image_jpg_path, image_array)
-        cv2.imwrite(heatmap_jpg_path, heatmap_image)
+        cv2.imwrite(image_jpg_path, image)
+        cv2.imwrite(output_jpg_path, combined_image)
