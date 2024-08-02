@@ -135,7 +135,6 @@ class BoardManager:
                 frame_id += 1
 
     def read_file(self, ch, frame_id):
-        print("read file {} - {} ".format(ch, frame_id))
         image_filename = f"image-{frame_id:06d}-{ch}.bin"
         heatmap_filename = f"heatmap-{frame_id:06d}-{ch}.bin"
 
@@ -148,6 +147,9 @@ class BoardManager:
             print(" - ", image_path)
             print(" - ", heatmap_path)
             return [None] * 104, [None] * 24
+        else:
+            print("Read from ", image_path)
+            print("Read from ", heatmap_path)
 
         image_array = np.fromfile(image_path, dtype='int8')
         heatmap_array  = np.fromfile(heatmap_path, dtype='int8')
@@ -205,7 +207,7 @@ class BoardManager:
 
         return (blended_image * 255).astype(np.uint8)
 
-    def visualize_skeleton(self, heatmap, image):
+    def visualize_skeleton(self, skeleton, heatmap_image):
         colors = [
             (255, 0, 0),       # Red
             (0, 255, 0),       # Green
@@ -220,13 +222,28 @@ class BoardManager:
             (128, 128, 0)      # Olive
         ]
 
-        keypoint_positions = []
+        for i in range(NUM_KEYPOINTS):
+            x, y = skeleton[i]
+            if all(coord > 0 for coord in [x, y]):
+                cv2.circle(heatmap_image, (int(x), int(y)), 3, colors[i], -1)
+            # cv2.circle(heatmap_image, (x, y), 3, colors[i], -1)
+            # cv2.putText(heatmap_image, str(i), (avg_x + 5, avg_y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1, cv2.LINE_AA)
 
+        for str_bone_id, dst_bone_id in BODY_BONES_POSE_11:
+            str_bone_x, str_bone_y = skeleton[str_bone_id.value]
+            dst_bone_x, dst_bone_y = skeleton[dst_bone_id.value]
+
+            if all(coord > 0 for coord in [str_bone_x, str_bone_y, dst_bone_x, dst_bone_y]):
+                cv2.line(heatmap_image, (int(str_bone_x), int(str_bone_y)), (int(dst_bone_x), int(dst_bone_y)), (255, 255, 255), 1)
+
+        return heatmap_image
+
+    def get_skeleton(self, heatmap):
         skeletons = np.zeros((11, 2))
 
         for i in range(NUM_KEYPOINTS):
             # 각 keypoint에 대해 DBSCAN 클러스터링
-            points = np.argwhere(heatmap[:, :, i] > 0.3)
+            points = np.argwhere(heatmap[:, :, i] > 0.2)
             if len(points) > 0:
                 db = DBSCAN(eps=3, min_samples=2).fit(points)
                 labels = db.labels_
@@ -238,39 +255,28 @@ class BoardManager:
                         # center_y, center_x = np.mean(largest_cluster, axis=0).astype(int)
                         max_y, max_x = largest_cluster[np.argmax(heatmap[largest_cluster[:, 0], largest_cluster[:, 1], i])]
 
-                        # 중심 위치를 기록
-                        keypoint_positions.append((i, max_x, max_y))
-
                         # 중심 위치에 원을 그림
                         center = (int(max_x * IMAGE_WIDTH / HEATMAP_WIDTH), int(max_y * IMAGE_HEIGHT / HEATMAP_HEIGHT))
-                        self.keypoint_history[i].append(center)
+                        # self.keypoint_history[i].append(center)
                         # 이동 평균 적용
-                        avg_x = int(np.mean([pos[0] for pos in self.keypoint_history[i]]))
-                        avg_y = int(np.mean([pos[1] for pos in self.keypoint_history[i]]))
-                        cv2.circle(image, (avg_x, avg_y), 3, colors[i], -1)
+                        # avg_x = int(np.mean([pos[0] for pos in self.keypoint_history[i]]))
+                        # avg_y = int(np.mean([pos[1] for pos in self.keypoint_history[i]]))
                         # cv2.putText(image, str(i), (avg_x + 5, avg_y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1, cv2.LINE_AA)
-                        skeletons[i][0] = avg_x
-                        skeletons[i][1] = avg_y
+                        skeletons[i][0] = center[0]
+                        skeletons[i][1] = center[1]
 
-        for str_bone_id, dst_bone_id in BODY_BONES_POSE_11:
-            str_bone_x, str_bone_y = skeletons[str_bone_id.value]
-            dst_bone_x, dst_bone_y = skeletons[dst_bone_id.value]
-
-            if all(coord > 0 for coord in [str_bone_x, str_bone_y, dst_bone_x, dst_bone_y]):
-                cv2.line(image, (int(str_bone_x), int(str_bone_y)), (int(dst_bone_x), int(dst_bone_y)), (255, 255, 255), 1)
-
-        return image, keypoint_positions
+        return skeletons
 
     def combine_channel_images(self, packet_data_image, packet_data_heatmap):
-        images = []
-        skeletons = []
+        cam_images = []
+        point_images = []
         for ch in range(4):
             if any(packet_data_image[ch]):
                 full_payload = b''.join([pkt for pkt in packet_data_image[ch] if pkt is not None])
                 if len(full_payload) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
                     image_array = np.frombuffer(full_payload[:IMAGE_WIDTH * IMAGE_HEIGHT * 3], dtype=np.uint8)
                     image = image_array.reshape((IMAGE_HEIGHT, IMAGE_WIDTH, 3))
-                    images.append(image)
+                    cam_images.append(image)
 
                     if any(packet_data_heatmap[ch]):
                         full_heatmap_payload = b''.join([pkt for pkt in packet_data_heatmap[ch] if pkt is not None])
@@ -293,23 +299,24 @@ class BoardManager:
                                             heatmap[addri, addrj, k] = int.from_bytes(temp, byteorder='little') / 255.0
                                             pos += 1
 
+                            skeleton = self.get_skeleton(heatmap)
                             heatmap_image = self.visualize_heatmaps(heatmap, image)
-                            heatmap_image, _ = self.visualize_skeleton(heatmap, heatmap_image)
-                            skeletons.append(heatmap_image)
+                            heatmap_image = self.visualize_skeleton(skeleton, heatmap_image)
+                            point_images.append(heatmap_image)
                         else:
-                            skeletons.append(np.zeros_like(image))
+                            point_images.append(np.zeros_like(image))
                     else:
-                        skeletons.append(np.zeros_like(image))
+                        point_images.append(np.zeros_like(image))
                 else:
-                    images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
-                    skeletons.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
+                    cam_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
+                    point_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
             else:
-                images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
-                skeletons.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
+                cam_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
+                point_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
 
         # 이미지와 skeleton을 결합하여 그리드 형태로 표시
-        combined_top_row = cv2.hconcat([images[0], skeletons[0], images[1], skeletons[1]])
-        combined_bottom_row = cv2.hconcat([images[2], skeletons[2], images[3], skeletons[3]])
+        combined_top_row = cv2.hconcat([cam_images[0], point_images[0], cam_images[1], point_images[1]])
+        combined_bottom_row = cv2.hconcat([cam_images[2], point_images[2], cam_images[3], point_images[3]])
         combined_image = cv2.vconcat([combined_top_row, combined_bottom_row])
         combined_image = cv2.cvtColor(combined_image, cv2.COLOR_BGR2RGB)
 
