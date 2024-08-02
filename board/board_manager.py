@@ -19,8 +19,6 @@ class BoardManager:
     def __init__(self, config):
         self.load = config["load"]
         self.transfer_manager = TransferManager(port=DEFAULT_PORT)
-        # 각 keypoint의 좌표를 저장할 큐
-        self.keypoint_history = {i: deque(maxlen=MOVING_AVERAGE_WINDOW) for i in range(NUM_KEYPOINTS)}
         self.start_fid = 0
         self.addr_file = os.path.join('./', 'out_addr.txt')
         current_time = datetime.now().strftime("%y%m%d%H%M%S")
@@ -28,6 +26,7 @@ class BoardManager:
         frame_size = (768, 512)
         if self.load is None:
             self.video_writer = VideoWriter(output_video_name, frame_size, 10)
+        self.skeleton_buffer = np.zeros((4, 3, 11, 3)) # 10개의 프레임에 대한 11개의 keypoint의 x, y 좌표를 저장
 
     def init(self):
         self.transfer_manager.init()
@@ -46,7 +45,8 @@ class BoardManager:
         self.transfer_manager.run()
 
         frame_id = self.start_fid
-        step_wise = False
+        self.step_wise = False
+        self.toggle = False
 
         window_name = "HVI OUT"
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -71,18 +71,19 @@ class BoardManager:
                 cv2.imshow(window_name, combined_image)
                 key = cv2.waitKey(10)
                 frame_id += 1
-                if self.load != "" and not step_wise and key == ord('s'):
-                    step_wise = True
+                if self.load is not None and not self.step_wise and key == ord('s'):
+                    self.step_wise = True
                 if key == ord('q'):
                     self.video_writer.release()
                     break
-                if step_wise:
+                if self.step_wise:
                     while True:
                         key = cv2.waitKey(10)
                         if key == ord('s'):
+                            self.toggle = not self.toggle
                             break
                         elif key == ord('a'):
-                            step_wise = False
+                            self.step_wise = False
                             break
 
             for future in futures:
@@ -128,11 +129,34 @@ class BoardManager:
             else:
                 if frame_id >= self.end_fid:
                     break
-                for ch in range(4):
-                    self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
+
+                if self.step_wise:
+                    if not self.toggle:
+                        time.sleep(0.1)
+                        continue
+                    else:
+                        for ch in range(4):
+                            self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
+                        frame_id += 1
+                        self.toggle = not self.toggle
+                else:
+                    for ch in range(4):
+                        self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
+                    frame_id += 1
                 time.sleep(0.1)
 
-                frame_id += 1
+
+                # if self.step_wise and not self.toggle:
+                #     time.sleep(0.1)
+                #     continue
+                # elif self.step_wise and self.toggle:
+                #     for ch in range(4):
+                #         self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
+                #     frame_id += 1
+                # else:
+                #     for ch in range(4):
+                #         self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
+                #     frame_id += 1
 
     def read_file(self, ch, frame_id):
         image_filename = f"image-{frame_id:06d}-{ch}.bin"
@@ -223,23 +247,47 @@ class BoardManager:
         ]
 
         for i in range(NUM_KEYPOINTS):
-            x, y = skeleton[i]
+            x, y, c = skeleton[i]
             if all(coord > 0 for coord in [x, y]):
-                cv2.circle(heatmap_image, (int(x), int(y)), 3, colors[i], -1)
+                if c > 0.2:
+                    cv2.circle(heatmap_image, (int(x), int(y)), 3, colors[i], -1)
             # cv2.circle(heatmap_image, (x, y), 3, colors[i], -1)
             # cv2.putText(heatmap_image, str(i), (avg_x + 5, avg_y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1, cv2.LINE_AA)
 
         for str_bone_id, dst_bone_id in BODY_BONES_POSE_11:
-            str_bone_x, str_bone_y = skeleton[str_bone_id.value]
-            dst_bone_x, dst_bone_y = skeleton[dst_bone_id.value]
+            str_bone_x, str_bone_y, str_score = skeleton[str_bone_id.value]
+            dst_bone_x, dst_bone_y, dst_score = skeleton[dst_bone_id.value]
 
             if all(coord > 0 for coord in [str_bone_x, str_bone_y, dst_bone_x, dst_bone_y]):
-                cv2.line(heatmap_image, (int(str_bone_x), int(str_bone_y)), (int(dst_bone_x), int(dst_bone_y)), (255, 255, 255), 1)
+                if str_score > 0.2 and dst_score > 0.2:
+                    cv2.line(heatmap_image, (int(str_bone_x), int(str_bone_y)), (int(dst_bone_x), int(dst_bone_y)), (255, 255, 255), 1)
 
         return heatmap_image
 
+    def get_interpolated_skeleton(self, ch, skeleton):
+        self.skeleton_buffer[ch] = np.roll(self.skeleton_buffer[ch], shift=1, axis=0)
+        if skeleton is not np.zeros((11, 3)):
+            self.skeleton_buffer[ch][0] = skeleton
+
+        next_skeleton = self.skeleton_buffer[ch][0]
+        curr_skeleton = self.skeleton_buffer[ch][1]
+        prev_skeleton = self.skeleton_buffer[ch][2]
+
+        for i in range(NUM_KEYPOINTS):
+            diff_next_and_prev = np.linalg.norm(next_skeleton[i, :2] - prev_skeleton[i, :2])
+            diff_next_and_curr = np.linalg.norm(next_skeleton[i, :2] - curr_skeleton[i, :2])
+            # print("diff_next_and_prev : ", diff_next_and_prev)
+            # print("diff_next_and_curr : ", diff_next_and_curr)
+            if diff_next_and_prev < 10 and diff_next_and_curr > 10:
+                curr_skeleton[i] = next_skeleton[i] * 0.5 + prev_skeleton[i] * 0.5
+
+        # average next and curr and prev
+        mean_skeleton = np.mean(self.skeleton_buffer[ch], axis=0)
+
+        return mean_skeleton
+
     def get_skeleton(self, heatmap):
-        skeletons = np.zeros((11, 2))
+        skeletons = np.zeros((11, 3))
 
         for i in range(NUM_KEYPOINTS):
             # 각 keypoint에 대해 DBSCAN 클러스터링
@@ -264,6 +312,7 @@ class BoardManager:
                         # cv2.putText(image, str(i), (avg_x + 5, avg_y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1, cv2.LINE_AA)
                         skeletons[i][0] = center[0]
                         skeletons[i][1] = center[1]
+                        skeletons[i][2] = np.mean(heatmap[largest_cluster[:, 0], largest_cluster[:, 1], i])
 
         return skeletons
 
@@ -300,6 +349,7 @@ class BoardManager:
                                             pos += 1
 
                             skeleton = self.get_skeleton(heatmap)
+                            # skeleton = self.get_interpolated_skeleton(ch, skeleton)
                             heatmap_image = self.visualize_heatmaps(heatmap, image)
                             heatmap_image = self.visualize_skeleton(skeleton, heatmap_image)
                             point_images.append(heatmap_image)
