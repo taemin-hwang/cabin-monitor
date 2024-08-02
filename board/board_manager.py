@@ -23,6 +23,11 @@ class BoardManager:
         self.keypoint_history = {i: deque(maxlen=MOVING_AVERAGE_WINDOW) for i in range(NUM_KEYPOINTS)}
         self.start_fid = 0
         self.addr_file = os.path.join('./', 'out_addr.txt')
+        current_time = datetime.now().strftime("%y%m%d%H%M%S")
+        output_video_name = f"log-{current_time}.mp4"
+        frame_size = (768, 512)
+        if self.load is None:
+            self.video_writer = VideoWriter(output_video_name, frame_size, 10)
 
     def init(self):
         self.transfer_manager.init()
@@ -47,7 +52,8 @@ class BoardManager:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 700, 500)
 
-        folder = self.create_log_folder()
+        if self.load is None:
+            folder = self.create_log_folder()
 
         # 데이터 수신 및 처리 작업을 병렬로 수행
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -55,9 +61,10 @@ class BoardManager:
             print("ready to make chunk")
 
             # 이미지 저장 스레드 시작
-            save_thread = threading.Thread(target=self.periodic_save, args=(folder,))
-            save_thread.daemon = True
-            save_thread.start()
+            if self.load is None:
+                save_thread = threading.Thread(target=self.periodic_save, args=(folder,))
+                save_thread.daemon = True
+                save_thread.start()
 
             while True:
                 combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
@@ -67,6 +74,7 @@ class BoardManager:
                 if self.load != "" and not step_wise and key == ord('s'):
                     step_wise = True
                 if key == ord('q'):
+                    self.video_writer.release()
                     break
                 if step_wise:
                     while True:
@@ -85,14 +93,15 @@ class BoardManager:
     def periodic_save(self, folder):
         frame_id = 0
         while True:
-            time.sleep(1)  # 1초 간격으로 실행
+            time.sleep(0.1)  # 1초 간격으로 실행
             for ch in range(4):
                 # 깊은 복사로 현재 데이터를 저장
                 image_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_image[ch] if pkt is not None]
                 heatmap_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_heatmap[ch] if pkt is not None]
                 if image_copy and heatmap_copy:
                     combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
-                    self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy, combined_image)
+                    self.video_writer.write_frame(combined_image)
+                    self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy)
             frame_id += 1
 
     def make_chunk(self, i):
@@ -121,12 +130,14 @@ class BoardManager:
                     break
                 for ch in range(4):
                     self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
+                time.sleep(0.1)
 
                 frame_id += 1
 
     def read_file(self, ch, frame_id):
-        image_filename = f"image-{ch}-{frame_id:06d}"
-        heatmap_filename = f"heatmap-{ch}-{frame_id:06d}"
+        print("read file {} - {} ".format(ch, frame_id))
+        image_filename = f"image-{frame_id:06d}-{ch}.bin"
+        heatmap_filename = f"heatmap-{frame_id:06d}-{ch}.bin"
 
         # 파일 경로 생성
         image_path = os.path.join(self.load, image_filename)
@@ -145,7 +156,7 @@ class BoardManager:
 
     def get_frame_id_range(self, load_folder, ch=0):
         # 정규 표현식을 사용하여 파일 이름에서 frame_id를 추출
-        pattern = re.compile(rf'image-{ch}-(\d{{6}})')
+        pattern = re.compile(rf'image-(\d{{6}})-{ch}')
 
         frame_ids = []
 
@@ -315,7 +326,7 @@ class BoardManager:
         print(f"Folder '{folder_name}' created successfully.")
         return folder_name
 
-    def save_image_and_heatmap(self, folder, ch, frame_id, image_array, heatmap_array, combined_image):
+    def save_image_and_heatmap(self, folder, ch, frame_id, image_array, heatmap_array):
         # 파일 이름 생성
         # image_filename = f"image-{ch}-{frame_id:06d}.bin"
         image_array = b''.join([pkt for pkt in image_array if pkt is not None])
@@ -326,18 +337,41 @@ class BoardManager:
         heatmap_array = b''.join([pkt for pkt in heatmap_array if pkt is not None])
         heatmap_array = np.frombuffer(heatmap_array[:HEATMAP_WIDTH * HEATMAP_HEIGHT * NUM_KEYPOINTS], dtype=np.uint8)
 
+        image_filename = f"image-{frame_id:06d}-{ch}.bin"
         heatmap_filename = f"heatmap-{frame_id:06d}-{ch}.bin"
-        image_jpg_filename = f"image-{frame_id:06d}-{ch}.jpg"
-        output_jpg_filename = f"heatmap-{frame_id:06d}-{ch}.jpg"
+        # image_jpg_filename = f"image-{frame_id:06d}-{ch}.jpg"
+        # output_jpg_filename = f"heatmap-{frame_id:06d}-{ch}.jpg"
 
         # 파일 경로 생성
-        # image_path = os.path.join(folder, image_filename)
+        image_path = os.path.join(folder, image_filename)
         heatmap_path = os.path.join(folder, heatmap_filename)
-        image_jpg_path = os.path.join(folder, image_jpg_filename)
-        output_jpg_path = os.path.join(folder, output_jpg_filename)
+        # image_jpg_path = os.path.join(folder, image_jpg_filename)
+        # output_jpg_path = os.path.join(folder, output_jpg_filename)
 
         # 이미지 저장
-        # image_array.astype('int8').tofile(image_path)
+        image_array.astype('int8').tofile(image_path)
         heatmap_array.astype('int8').tofile(heatmap_path)
-        cv2.imwrite(image_jpg_path, image)
-        cv2.imwrite(output_jpg_path, combined_image)
+        # cv2.imwrite(image_jpg_path, image)
+        # cv2.imwrite(output_jpg_path, combined_image)
+
+class VideoWriter:
+    def __init__(self, output_path, frame_size, fps=30):
+        self.output_path = output_path
+        self.frame_size = frame_size
+        self.fps = fps
+        self.video_writer = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*'mp4v'),
+            fps,
+            frame_size
+        )
+
+    def write_frame(self, frame):
+        print(frame.shape)
+        print(self.frame_size)
+        if frame.shape[1] != self.frame_size[0] or frame.shape[0] != self.frame_size[1]:
+            raise ValueError("Frame size does not match initialized frame size")
+        self.video_writer.write(frame)
+
+    def release(self):
+        self.video_writer.release()
