@@ -5,8 +5,10 @@ class TransferManager:
     def __init__(self, port=DEFAULT_PORT):
         self.recv_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         recv_addr = ('', port)
+        # self.recv_socket.setblocking(0)
         self.recv_socket.bind(recv_addr)
         print(f"Server: Receiving on port {port}")
+
 
     def init(sef):
         pass
@@ -18,7 +20,11 @@ class TransferManager:
         self.recv_socket.close()
 
     def get_data(self):
-        byte_recv, sender_addr = self.recv_socket.recvfrom(DEFAULT_BUFLEN)
+        try:
+            byte_recv, sender_addr = self.recv_socket.recvfrom(DEFAULT_BUFLEN)
+        except socket.error:
+            print("socket error")
+
         length = len(byte_recv)
 
         stx, length_field, ch, count, payload, csum, etx = self.process_packet(byte_recv, length)

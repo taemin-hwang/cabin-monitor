@@ -26,6 +26,8 @@ class BoardManager:
         frame_size = (768, 512)
         if self.load is None:
             self.video_writer = VideoWriter(output_video_name, frame_size, 10)
+        else:
+            self.video_writer = None
         self.skeleton_buffer = np.zeros((4, 3, 11, 3)) # 10개의 프레임에 대한 11개의 keypoint의 x, y 좌표를 저장
 
     def init(self):
@@ -52,8 +54,8 @@ class BoardManager:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 700, 500)
 
-        if self.load is None:
-            folder = self.create_log_folder()
+        # if self.load is None:
+        # folder = self.create_log_folder()
 
         # 데이터 수신 및 처리 작업을 병렬로 수행
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -61,10 +63,10 @@ class BoardManager:
             print("ready to make chunk")
 
             # 이미지 저장 스레드 시작
-            if self.load is None:
-                save_thread = threading.Thread(target=self.periodic_save, args=(folder,))
-                save_thread.daemon = True
-                save_thread.start()
+            # if self.load is None:
+            # save_thread = threading.Thread(target=self.periodic_save, args=(folder,))
+            # save_thread.daemon = True
+            # save_thread.start()
 
             while True:
                 combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
@@ -101,8 +103,10 @@ class BoardManager:
                 heatmap_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_heatmap[ch] if pkt is not None]
                 if image_copy and heatmap_copy:
                     combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
-                    self.video_writer.write_frame(combined_image)
-                    self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy)
+                    if self.video_writer is not None:
+                        self.video_writer.write_frame(combined_image)
+                    if len(image_copy) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
+                        self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy)
             frame_id += 1
 
     def make_chunk(self, i):
@@ -319,50 +323,46 @@ class BoardManager:
     def combine_channel_images(self, packet_data_image, packet_data_heatmap):
         cam_images = []
         point_images = []
+
+        # Initialize
+        for ch in range(4):
+            cam_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
+            point_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
+
         for ch in range(4):
             if any(packet_data_image[ch]):
                 full_payload = b''.join([pkt for pkt in packet_data_image[ch] if pkt is not None])
                 if len(full_payload) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
                     image_array = np.frombuffer(full_payload[:IMAGE_WIDTH * IMAGE_HEIGHT * 3], dtype=np.uint8)
                     image = image_array.reshape((IMAGE_HEIGHT, IMAGE_WIDTH, 3))
-                    cam_images.append(image)
+                    cam_images[ch] = image
 
-                    if any(packet_data_heatmap[ch]):
-                        full_heatmap_payload = b''.join([pkt for pkt in packet_data_heatmap[ch] if pkt is not None])
-                        if len(full_heatmap_payload) >= HEATMAP_WIDTH * HEATMAP_HEIGHT * NUM_KEYPOINTS:
-                            heatmap_array = np.frombuffer(full_heatmap_payload[:HEATMAP_WIDTH * HEATMAP_HEIGHT * NUM_KEYPOINTS], dtype=np.uint8)
+            if any(packet_data_heatmap[ch]):
+                full_heatmap_payload = b''.join([pkt for pkt in packet_data_heatmap[ch] if pkt is not None])
+                if len(full_heatmap_payload) >= HEATMAP_WIDTH * HEATMAP_HEIGHT * NUM_KEYPOINTS:
+                    heatmap_array = np.frombuffer(full_heatmap_payload[:HEATMAP_WIDTH * HEATMAP_HEIGHT * NUM_KEYPOINTS], dtype=np.uint8)
 
-                            heatmap = np.zeros((HEATMAP_HEIGHT, HEATMAP_WIDTH, NUM_KEYPOINTS))
-                            pos = 0
-                            with open(self.addr_file, 'r') as fID_addr:
-                                addr_list = np.zeros((64 * 48, 2), dtype=int)
-                                for i in range(64):
-                                    for j in range(48):
-                                        addr = int(fID_addr.read(3), 16)
-                                        fID_addr.read(1)  # Read the newline character
-                                        addri = addr // 48
-                                        addrj = addr % 48
-                                        addr_list[i * 48 + j] = [addri, addrj]
-                                        for k in range(11):
-                                            temp = heatmap_array[pos]
-                                            heatmap[addri, addrj, k] = int.from_bytes(temp, byteorder='little') / 255.0
-                                            pos += 1
+                    heatmap = np.zeros((HEATMAP_HEIGHT, HEATMAP_WIDTH, NUM_KEYPOINTS))
+                    pos = 0
+                    with open(self.addr_file, 'r') as fID_addr:
+                        addr_list = np.zeros((64 * 48, 2), dtype=int)
+                        for i in range(64):
+                            for j in range(48):
+                                addr = int(fID_addr.read(3), 16)
+                                fID_addr.read(1)  # Read the newline character
+                                addri = addr // 48
+                                addrj = addr % 48
+                                addr_list[i * 48 + j] = [addri, addrj]
+                                for k in range(11):
+                                    temp = heatmap_array[pos]
+                                    heatmap[addri, addrj, k] = int.from_bytes(temp, byteorder='little') / 255.0
+                                    pos += 1
 
-                            skeleton = self.get_skeleton(heatmap)
-                            # skeleton = self.get_interpolated_skeleton(ch, skeleton)
-                            heatmap_image = self.visualize_heatmaps(heatmap, image)
-                            heatmap_image = self.visualize_skeleton(skeleton, heatmap_image)
-                            point_images.append(heatmap_image)
-                        else:
-                            point_images.append(np.zeros_like(image))
-                    else:
-                        point_images.append(np.zeros_like(image))
-                else:
-                    cam_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
-                    point_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
-            else:
-                cam_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
-                point_images.append(np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8))
+                    skeleton = self.get_skeleton(heatmap)
+                    # skeleton = self.get_interpolated_skeleton(ch, skeleton)
+                    heatmap_image = self.visualize_heatmaps(heatmap, cam_images[ch])
+                    heatmap_image = self.visualize_skeleton(skeleton, heatmap_image)
+                    point_images[ch] = heatmap_image
 
         # 이미지와 skeleton을 결합하여 그리드 형태로 표시
         combined_top_row = cv2.hconcat([cam_images[0], point_images[0], cam_images[1], point_images[1]])
@@ -396,19 +396,20 @@ class BoardManager:
 
         image_filename = f"image-{frame_id:06d}-{ch}.bin"
         heatmap_filename = f"heatmap-{frame_id:06d}-{ch}.bin"
-        # image_jpg_filename = f"image-{frame_id:06d}-{ch}.jpg"
+        image_jpg_filename = f"image-{frame_id:06d}-{ch}.jpg"
         # output_jpg_filename = f"heatmap-{frame_id:06d}-{ch}.jpg"
 
         # 파일 경로 생성
         image_path = os.path.join(folder, image_filename)
         heatmap_path = os.path.join(folder, heatmap_filename)
-        # image_jpg_path = os.path.join(folder, image_jpg_filename)
+        image_jpg_path = os.path.join(folder, image_jpg_filename)
         # output_jpg_path = os.path.join(folder, output_jpg_filename)
 
+        print("save image and heatmap to", image_path)
         # 이미지 저장
         image_array.astype('int8').tofile(image_path)
         heatmap_array.astype('int8').tofile(heatmap_path)
-        # cv2.imwrite(image_jpg_path, image)
+        cv2.imwrite(image_jpg_path, image)
         # cv2.imwrite(output_jpg_path, combined_image)
 
 class VideoWriter:
