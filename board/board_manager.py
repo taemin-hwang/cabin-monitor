@@ -22,7 +22,7 @@ class BoardManager:
         self.start_fid = 0
         self.addr_file = os.path.join('./', 'out_addr.txt')
         current_time = datetime.now().strftime("%y%m%d%H%M%S")
-        output_video_name = f"log-{current_time}.mp4"
+        output_video_name = f"./log/log-{current_time}.mp4"
         frame_size = (768, 512)
         if self.load is None:
             self.video_writer = VideoWriter(output_video_name, frame_size, 10)
@@ -65,8 +65,9 @@ class BoardManager:
             # 이미지 저장 스레드 시작
             # if self.load is None:
             # save_thread = threading.Thread(target=self.periodic_save, args=(folder,))
-            # save_thread.daemon = True
-            # save_thread.start()
+            save_thread = threading.Thread(target=self.periodic_save)
+            save_thread.daemon = True
+            save_thread.start()
 
             while True:
                 combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
@@ -93,7 +94,7 @@ class BoardManager:
 
         cv2.destroyAllWindows()
 
-    def periodic_save(self, folder):
+    def periodic_save(self, folder=None):
         frame_id = 0
         while True:
             time.sleep(0.1)  # 1초 간격으로 실행
@@ -376,7 +377,7 @@ class BoardManager:
         # 현재 날짜와 시간을 yymmddhhmmss 형식으로 가져옴
         current_time = datetime.now().strftime("%y%m%d%H%M%S")
         # 폴더 이름을 생성
-        folder_name = f"log-{current_time}"
+        folder_name = f"./log/log-{current_time}"
 
         # 폴더 생성
         os.makedirs(folder_name, exist_ok=True)
