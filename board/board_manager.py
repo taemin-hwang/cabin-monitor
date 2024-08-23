@@ -103,10 +103,10 @@ class BoardManager:
                 heatmap_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_heatmap[ch] if pkt is not None]
                 if image_copy and heatmap_copy:
                     combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
-                    if self.video_writer is not None:
-                        self.video_writer.write_frame(combined_image)
-                    if len(image_copy) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
-                        self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy)
+                    # if self.video_writer is not None:
+                    self.video_writer.write_frame(combined_image)
+                    # if len(image_copy) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
+                    #     self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy)
             frame_id += 1
 
     def make_chunk(self, i):
