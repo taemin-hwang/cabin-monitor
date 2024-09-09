@@ -1,14 +1,13 @@
 import socket
 from utils import *
 
-class TransferManager:
+class BoardTransfer:
     def __init__(self, port=DEFAULT_PORT):
         self.recv_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         recv_addr = ('', port)
         # self.recv_socket.setblocking(0)
         self.recv_socket.bind(recv_addr)
         print(f"Server: Receiving on port {port}")
-
 
     def init(sef):
         pass

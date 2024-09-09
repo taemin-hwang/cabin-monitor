@@ -1,0 +1,7 @@
+{
+    "id" : 0,
+    "board ip" : "192.168.1.60",
+    "board port" : 8888,
+    "cluster ip" : "127.0.0.1",
+    "cluster port" : 50002
+}

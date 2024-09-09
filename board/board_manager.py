@@ -13,12 +13,13 @@ import concurrent.futures
 import time
 
 from utils import *
-from transfer_manager import TransferManager
+
+from service.service_manager import ServiceManager
+from transfer.transfer_manager import TransferManager
 
 class BoardManager:
     def __init__(self, config):
         self.load = config["load"]
-        self.transfer_manager = TransferManager(port=DEFAULT_PORT)
         self.start_fid = 0
         self.addr_file = os.path.join('./', 'out_addr.txt')
         current_time = datetime.now().strftime("%y%m%d%H%M%S")
@@ -29,6 +30,10 @@ class BoardManager:
         else:
             self.video_writer = None
         self.skeleton_buffer = np.zeros((4, 3, 11, 3)) # 10개의 프레임에 대한 11개의 keypoint의 x, y 좌표를 저장
+
+        self.service_managers = [ServiceManager() for _ in range(4)]
+        self.transfer_manager = TransferManager()
+        self.__current_status = 1
 
     def init(self):
         self.transfer_manager.init()
@@ -44,8 +49,6 @@ class BoardManager:
         self.transfer_manager.shutdown()
 
     def run(self):
-        self.transfer_manager.run()
-
         frame_id = self.start_fid
         self.step_wise = False
         self.toggle = False
@@ -63,16 +66,27 @@ class BoardManager:
             print("ready to make chunk")
 
             # 이미지 저장 스레드 시작
-            # if self.load is None:
-            # save_thread = threading.Thread(target=self.periodic_save, args=(folder,))
-            save_thread = threading.Thread(target=self.periodic_save)
-            save_thread.daemon = True
-            save_thread.start()
+            # save_thread = threading.Thread(target=self.periodic_save)
+            # save_thread.daemon = True
+            # save_thread.start()
 
             while True:
-                combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
+                combined_image, skeletons = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
+
+                for ch in range(4):
+                    if skeletons.get(ch) is not None:
+                        self.service_managers[ch].update_service(skeletons[ch])
+                        skeleton = self.service_managers[ch].get_skeleton()
+                        control = self.service_managers[ch].get_control()
+                        status = self.service_managers[ch].get_status()
+                        gaze = self.service_managers[ch].get_gaze()
+                        self.transfer_manager.run(ch, skeleton, control, status, gaze)
+                        time.sleep(0.01)
+                        # self.print_control(control)
+                        # self.print_status(status)
+
                 cv2.imshow(window_name, combined_image)
-                key = cv2.waitKey(10)
+                key = cv2.waitKey(1)
                 frame_id += 1
                 if self.load is not None and not self.step_wise and key == ord('s'):
                     self.step_wise = True
@@ -81,7 +95,7 @@ class BoardManager:
                     break
                 if self.step_wise:
                     while True:
-                        key = cv2.waitKey(10)
+                        key = cv2.waitKey(1)
                         if key == ord('s'):
                             self.toggle = not self.toggle
                             break
@@ -103,7 +117,7 @@ class BoardManager:
                 image_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_image[ch] if pkt is not None]
                 heatmap_copy = [copy.deepcopy(pkt) for pkt in self.packet_data_heatmap[ch] if pkt is not None]
                 if image_copy and heatmap_copy:
-                    combined_image = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
+                    combined_image, _ = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
                     # if self.video_writer is not None:
                     self.video_writer.write_frame(combined_image)
                     # if len(image_copy) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
@@ -124,12 +138,12 @@ class BoardManager:
                     continue
 
                 if stx == 0x20:
-                    if count == 103:
-                        print(f"Received full image for channel {ch}")
+                    # if count == 103:
+                    #     print(f"Received full image for channel {ch}")
                     self.packet_data_image[ch][count] = payload
                 elif stx == 0x02:
-                    if count == 13:
-                        print(f"Received full hvi for channel {ch}")
+                    # if count == 13:
+                    #     print(f"Received full hvi for channel {ch}")
                     self.packet_data_heatmap[ch][count] = payload
             else:
                 if frame_id >= self.end_fid:
@@ -324,6 +338,7 @@ class BoardManager:
     def combine_channel_images(self, packet_data_image, packet_data_heatmap):
         cam_images = []
         point_images = []
+        skeletons = {}
 
         # Initialize
         for ch in range(4):
@@ -360,9 +375,11 @@ class BoardManager:
                                     pos += 1
 
                     skeleton = self.get_skeleton(heatmap)
+                    skeletons[ch] = skeleton
                     # skeleton = self.get_interpolated_skeleton(ch, skeleton)
                     heatmap_image = self.visualize_heatmaps(heatmap, cam_images[ch])
                     heatmap_image = self.visualize_skeleton(skeleton, heatmap_image)
+                    cv2.putText(heatmap_image, f"CH. {ch}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
                     point_images[ch] = heatmap_image
 
         # 이미지와 skeleton을 결합하여 그리드 형태로 표시
@@ -371,7 +388,7 @@ class BoardManager:
         combined_image = cv2.vconcat([combined_top_row, combined_bottom_row])
         combined_image = cv2.cvtColor(combined_image, cv2.COLOR_BGR2RGB)
 
-        return combined_image
+        return combined_image, skeletons
 
     def create_log_folder(self):
         # 현재 날짜와 시간을 yymmddhhmmss 형식으로 가져옴
@@ -412,6 +429,28 @@ class BoardManager:
         heatmap_array.astype('int8').tofile(heatmap_path)
         cv2.imwrite(image_jpg_path, image)
         # cv2.imwrite(output_jpg_path, combined_image)
+
+    def print_control(self, control):
+        if control == 1:
+            print("Control : UP")
+        elif control == 2:
+            print("Control : DOWN")
+        elif control == 3:
+            print("Control : LEFT")
+        elif control == 4:
+            print("Control : RIGHT")
+        else:
+            pass
+
+    def print_status(self, status):
+        if status is not self.__current_status:
+            if status == 2:
+                print("Status : GAZE LEFT")
+            elif status == 3:
+                print("Status : GAZE RIGHT")
+
+        self.__current_status = status
+
 
 class VideoWriter:
     def __init__(self, output_path, frame_size, fps=30):
