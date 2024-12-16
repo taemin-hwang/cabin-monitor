@@ -9,7 +9,7 @@ class Voice:
         self.rate = 16000
         self.record_seconds = 5
         self.filename = 'tmp.wav'
-        self.model = whisper.load_model("small")
+        self.model = whisper.load_model("base")
 
     def __del__(self):
         print('destroy speech manager')

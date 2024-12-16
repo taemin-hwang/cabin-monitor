@@ -1,6 +1,18 @@
 import numpy as np
 import math
 
+    # 0// nose
+    # 1// reye
+    # 2// leye
+    # 3// rear
+    # 4// lear
+    # 5// rsoulder
+    # 6// lsoulder
+    # 7// relbow
+    # 8// lelbow
+    # 9// rwrist
+    # 10// lwrist
+
 class Status:
     def __init__(self):
         self._status = 1
@@ -32,12 +44,19 @@ class Status:
         # print("p_reye[0]", p_reye[0])
         # print("p_rear[0]", p_rear[0])
 
-        if (d1_ratio < 0.04 or d2_ratio < 0.04) :
-            status = 2
-        elif (p_leye[0] > p_lear[0] or p_reye[0] < p_rear[0]):
-            status = 2
-        else:
+        # print("d1_ratio", d1_ratio)
+        # print("d2_ratio", d2_ratio)
+
+        # print("d1/d2", d1/d2)
+
+        # if (d1_ratio < 0.04 or d2_ratio < 0.04) :
+        #     status = 2
+        # elif (p_leye[0] > p_lear[0] or p_reye[0] < p_rear[0]):
+        #     status = 2
+        if (d1/d2 >= 0.6 and d2/d1 >= 0.6):
             status = 1
+        else:
+            status = 2
 
         # print("status : ", status)
 

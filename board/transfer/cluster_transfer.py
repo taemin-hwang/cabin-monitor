@@ -1,11 +1,18 @@
+import os
+from datetime import datetime
 from transfer import transfer_interface
 
 import numpy as np
 import json
+
 class ClusterTransfer(transfer_interface.TransferInterface):
     def __init__(self, id, ip, port):
         super().__init__(id, ip, port)
         self.handler = None
+
+        # Output directory path
+        self.output_dir = None
+        self.file_counter = 0
 
     def set_recv_handler(self, f):
         self.handler = f
@@ -33,18 +40,28 @@ class ClusterTransfer(transfer_interface.TransferInterface):
         print(json_string)
         self.send(json_string.encode())
 
-    def send_data(self, ch, skeleton, control, status, gaze):
-        # {
-        #   id : 1,
-        #   status : 1,
-        #   control : 1,
-        #   skeleton : [
-        #       [1, 2],
-        #       [3, 4],
-        #       ...
-        #   ]
-        # }
+    def _ensure_output_dir(self):
+        # Create a folder in ./out/ with the current timestamp (YY-MM-dd_HH-MM-ss)
+        if self.output_dir is None:
+            timestamp = datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+            self.output_dir = os.path.join('./out', timestamp)
+            os.makedirs(self.output_dir, exist_ok=True)
 
+    def _save_json_to_file(self, json_string):
+        # Ensure the output directory exists
+        self._ensure_output_dir()
+
+        # Increment file counter
+        self.file_counter += 1
+        filename = f"{self.file_counter:06d}.json"
+        file_path = os.path.join(self.output_dir, filename)
+
+        # Save JSON string to file
+        with open(file_path, 'w') as json_file:
+            json_file.write(json_string)
+        # print(f"Saved JSON to {file_path}")
+
+    def send_data(self, ch, skeleton, control, status, gaze):
         # Round to the 4th decimal place
         skeleton = np.round(skeleton, 4)
 
@@ -59,6 +76,8 @@ class ClusterTransfer(transfer_interface.TransferInterface):
 
         json_string = json.dumps(json_data)
 
-        # print(json_string)
+        # Save JSON string to file
+        self._save_json_to_file(json_string)
 
+        # Send JSON string
         self.send(json_string.encode())

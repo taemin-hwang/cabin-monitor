@@ -11,11 +11,17 @@ import threading
 import copy
 import concurrent.futures
 import time
+import speech_recognition as sr
+import logging
+from collections import defaultdict
 
 from utils import *
 
 from service.service_manager import ServiceManager
 from transfer.transfer_manager import TransferManager
+
+# Logging 설정
+logging.basicConfig(filename='chunk_logging.log', level=logging.INFO, format='%(asctime)s - %(message)s')
 
 class BoardManager:
     def __init__(self, config):
@@ -25,15 +31,26 @@ class BoardManager:
         current_time = datetime.now().strftime("%y%m%d%H%M%S")
         output_video_name = f"./log/log-{current_time}.mp4"
         frame_size = (768, 512)
-        if self.load is None:
-            self.video_writer = VideoWriter(output_video_name, frame_size, 10)
-        else:
-            self.video_writer = None
-        self.skeleton_buffer = np.zeros((4, 3, 11, 3)) # 10개의 프레임에 대한 11개의 keypoint의 x, y 좌표를 저장
+        # if self.load is None:
+        #     self.video_writer = VideoWriter(output_video_name, frame_size, 10)
+        # else:
+        #     self.video_writer = None
+        self.skeleton_buffer = np.zeros((4, 7, 11, 3)) # 10개의 프레임에 대한 11개의 keypoint의 x, y 좌표를 저장
 
         self.service_managers = [ServiceManager() for _ in range(4)]
         self.transfer_manager = TransferManager()
         self.__current_status = 1
+
+        # 설정: 깨어날 키워드
+        self.WAKE_WORD = "hey kitty"  # hey KETI
+
+        # 음성 인식을 위한 스레드 시작
+        self.voice_thread = threading.Thread(target=self.listen_for_wake_word)
+        self.voice_thread.daemon = True
+        self.voice_thread.start()
+
+        self.stx_0x02_count = 0  # 채널별 호출 횟수 저장
+        self.start_time = time.time()  # 시작 시간 기록
 
     def init(self):
         self.transfer_manager.init()
@@ -47,6 +64,49 @@ class BoardManager:
 
     def shutdown(self):
         self.transfer_manager.shutdown()
+
+    def listen_for_wake_word(self):
+        recognizer = sr.Recognizer()
+        with sr.Microphone() as source:
+            print("[1] Listening for wake word...")
+            while True:
+                try:
+                    audio = recognizer.listen(source)
+                    recognized_text = recognizer.recognize_google(audio)
+                    print(f"[1] Recognized: {recognized_text}")
+                    
+                    if self.WAKE_WORD in recognized_text.lower():
+                        print("[1] Wake word detected! Listening for command...")
+                        self.listen_for_commands()  # 명령을 수신하는 함수 호출
+
+                except sr.UnknownValueError:
+                    print("[1] Sorry, I did not catch that.")
+                except sr.RequestError:
+                    print("[1] Could not request results from Google Speech Recognition service.")
+
+    def listen_for_commands(self):
+        recognizer = sr.Recognizer()
+        self.transfer_manager.send_voice("Hey KETI")
+        with sr.Microphone() as source:
+            print("[2] Waiting for commands...")
+            start_time = time.time()
+            while True:
+                try:
+                    audio = recognizer.listen(source, timeout=5)
+                    recognized_text = recognizer.recognize_google(audio, language='ko-KR')
+                    print(f"[2] Command recognized: {recognized_text}")
+
+                    self.transfer_manager.send_voice(recognized_text)
+                    print("[2] Voice command sent to TransferManager.")
+                    break  # 명령 인식 후 반복 종료
+
+                except sr.UnknownValueError:
+                    print("[2] Sorry, I did not catch that.")
+                except sr.RequestError:
+                    print("[2] Could not request results from Google Speech Recognition service.")
+                except sr.WaitTimeoutError:
+                    print("[2] No command detected. Going back to listening for wake word...")
+                    return
 
     def run(self):
         frame_id = self.start_fid
@@ -81,9 +141,10 @@ class BoardManager:
                         status = self.service_managers[ch].get_status()
                         gaze = self.service_managers[ch].get_gaze()
                         self.transfer_manager.run(ch, skeleton, control, status, gaze)
-                        time.sleep(0.01)
+                        # print(ch, " =========== ")
                         # self.print_control(control)
                         # self.print_status(status)
+                        time.sleep(0.01)
 
                 cv2.imshow(window_name, combined_image)
                 key = cv2.waitKey(1)
@@ -91,7 +152,7 @@ class BoardManager:
                 if self.load is not None and not self.step_wise and key == ord('s'):
                     self.step_wise = True
                 if key == ord('q'):
-                    self.video_writer.release()
+                    # self.video_writer.release()
                     break
                 if self.step_wise:
                     while True:
@@ -119,7 +180,7 @@ class BoardManager:
                 if image_copy and heatmap_copy:
                     combined_image, _ = self.combine_channel_images(self.packet_data_image, self.packet_data_heatmap)
                     # if self.video_writer is not None:
-                    self.video_writer.write_frame(combined_image)
+                    # self.video_writer.write_frame(combined_image)
                     # if len(image_copy) >= IMAGE_WIDTH * IMAGE_HEIGHT * 3:
                     #     self.save_image_and_heatmap(folder, ch, frame_id, image_copy, heatmap_copy)
             frame_id += 1
@@ -139,12 +200,16 @@ class BoardManager:
 
                 if stx == 0x20:
                     # if count == 103:
-                    #     print(f"Received full image for channel {ch}")
+                        # print(f"Received full image for channel {ch}")
                     self.packet_data_image[ch][count] = payload
                 elif stx == 0x02:
                     # if count == 13:
-                    #     print(f"Received full hvi for channel {ch}")
+                        # print(f"Received full hvi for channel {ch}")
                     self.packet_data_heatmap[ch][count] = payload
+                    if count == 23:
+                        self.stx_0x02_count += 1
+                        # 1초 단위로 호출 횟수 로깅
+                        # self.log_stx_0x02_count()
             else:
                 if frame_id >= self.end_fid:
                     break
@@ -164,18 +229,13 @@ class BoardManager:
                     frame_id += 1
                 time.sleep(0.1)
 
-
-                # if self.step_wise and not self.toggle:
-                #     time.sleep(0.1)
-                #     continue
-                # elif self.step_wise and self.toggle:
-                #     for ch in range(4):
-                #         self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
-                #     frame_id += 1
-                # else:
-                #     for ch in range(4):
-                #         self.packet_data_image[ch], self.packet_data_heatmap[ch] = self.read_file(ch, frame_id)
-                #     frame_id += 1
+    def log_stx_0x02_count(self):
+        """1초 동안 stx == 0x02가 호출된 횟수를 로깅합니다."""
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time >= 1:  # 1초 경과 확인
+            logging.info(f"stx == 0x02 count for channel : {self.stx_0x02_count}")
+            self.stx_0x02_count = 0  # 카운트 초기화
+            self.start_time = time.time()  # 시작 시간 갱신
 
     def read_file(self, ch, frame_id):
         image_filename = f"image-{frame_id:06d}-{ch}.bin"
@@ -265,10 +325,11 @@ class BoardManager:
             (128, 128, 0)      # Olive
         ]
 
+        c_thres = 0.33
         for i in range(NUM_KEYPOINTS):
             x, y, c = skeleton[i]
             if all(coord > 0 for coord in [x, y]):
-                if c > 0.2:
+                if c > c_thres:
                     cv2.circle(heatmap_image, (int(x), int(y)), 3, colors[i], -1)
             # cv2.circle(heatmap_image, (x, y), 3, colors[i], -1)
             # cv2.putText(heatmap_image, str(i), (avg_x + 5, avg_y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1, cv2.LINE_AA)
@@ -278,7 +339,7 @@ class BoardManager:
             dst_bone_x, dst_bone_y, dst_score = skeleton[dst_bone_id.value]
 
             if all(coord > 0 for coord in [str_bone_x, str_bone_y, dst_bone_x, dst_bone_y]):
-                if str_score > 0.2 and dst_score > 0.2:
+                if str_score > c_thres and dst_score > c_thres:
                     cv2.line(heatmap_image, (int(str_bone_x), int(str_bone_y)), (int(dst_bone_x), int(dst_bone_y)), (255, 255, 255), 1)
 
         return heatmap_image
@@ -288,17 +349,17 @@ class BoardManager:
         if skeleton is not np.zeros((11, 3)):
             self.skeleton_buffer[ch][0] = skeleton
 
-        next_skeleton = self.skeleton_buffer[ch][0]
-        curr_skeleton = self.skeleton_buffer[ch][1]
-        prev_skeleton = self.skeleton_buffer[ch][2]
+        # next_skeleton = self.skeleton_buffer[ch][0]
+        # curr_skeleton = self.skeleton_buffer[ch][1]
+        # prev_skeleton = self.skeleton_buffer[ch][2]
 
-        for i in range(NUM_KEYPOINTS):
-            diff_next_and_prev = np.linalg.norm(next_skeleton[i, :2] - prev_skeleton[i, :2])
-            diff_next_and_curr = np.linalg.norm(next_skeleton[i, :2] - curr_skeleton[i, :2])
-            # print("diff_next_and_prev : ", diff_next_and_prev)
-            # print("diff_next_and_curr : ", diff_next_and_curr)
-            if diff_next_and_prev < 10 and diff_next_and_curr > 10:
-                curr_skeleton[i] = next_skeleton[i] * 0.5 + prev_skeleton[i] * 0.5
+        # for i in range(NUM_KEYPOINTS):
+        #     diff_next_and_prev = np.linalg.norm(next_skeleton[i, :2] - prev_skeleton[i, :2])
+        #     diff_next_and_curr = np.linalg.norm(next_skeleton[i, :2] - curr_skeleton[i, :2])
+        #     # print("diff_next_and_prev : ", diff_next_and_prev)
+        #     # print("diff_next_and_curr : ", diff_next_and_curr)
+        #     if diff_next_and_prev < 10 and diff_next_and_curr > 10:
+        #         curr_skeleton[i] = next_skeleton[i] * 0.5 + prev_skeleton[i] * 0.5
 
         # average next and curr and prev
         mean_skeleton = np.mean(self.skeleton_buffer[ch], axis=0)
@@ -333,7 +394,24 @@ class BoardManager:
                         skeletons[i][1] = center[1]
                         skeletons[i][2] = np.mean(heatmap[largest_cluster[:, 0], largest_cluster[:, 1], i])
 
-        return skeletons
+        # 좌우 인덱스를 바꾸기 위한 매핑
+        flip_indices = {
+            5: 6,  # 오른쪽 어깨 -> 왼쪽 어깨
+            6: 5,  # 왼쪽 어깨 -> 오른쪽 어깨
+            7: 8,  # 오른쪽 팔꿈치 -> 왼쪽 팔꿈치
+            8: 7,  # 왼쪽 팔꿈치 -> 오른쪽 팔꿈치
+            9: 10, # 오른쪽 손목 -> 왼쪽 손목
+            10: 9  # 왼쪽 손목 -> 오른쪽 손목
+        }
+
+        # 좌우를 바꾼 스켈레톤 데이터 생성
+        skeletons_flipped = np.copy(skeletons)
+
+        for left, right in flip_indices.items():
+            skeletons_flipped[left], skeletons_flipped[right] = skeletons[right], skeletons[left]
+
+
+        return skeletons_flipped
 
     def combine_channel_images(self, packet_data_image, packet_data_heatmap):
         cam_images = []
@@ -439,6 +517,14 @@ class BoardManager:
             print("Control : LEFT")
         elif control == 4:
             print("Control : RIGHT")
+        elif control == 5:
+            print("Game : UP")
+        elif control == 6:
+            print("Game : RIGHT")
+        elif control == 7:
+            print("Game : LEFT")
+        elif control == 8:
+            print("Game : NECK")
         else:
             pass
 

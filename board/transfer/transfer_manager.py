@@ -28,6 +28,9 @@ class TransferManager:
     def set_recv_handler(self, f):
         self.cluster_transfer.set_recv_handler(f)
 
+    def send_voice(self, voice):
+        self.cluster_transfer.send_voice(voice)
+
     def run(self, ch, skeleton, control, status, gaze):
         self.cluster_transfer.send_data(ch, skeleton, control, status, gaze)
         # self.ivi_transfer.send_data(skeleton, control, status)
